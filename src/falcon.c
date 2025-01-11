@@ -2,10 +2,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <uv.h>
 
 #include <llhttp.h>
 #include <uthash.h>
+#include <uv.h>
 
 #include "falcon.h"
 
@@ -20,7 +20,7 @@ static char OK_RESPONSE[] = "HTTP/1.1 200 OK\r\n"
 typedef struct
 {
   char *path;
-  falcon_http_method method;
+  fHttpMethod method;
   falcon_route_handler handler;
 
   UT_hash_handle hh;
@@ -28,39 +28,29 @@ typedef struct
 
 Route *Routes_glob = NULL;
 
+// uv IO callbacks
+void on_write(uv_write_t *req, int status);
 void on_connection(uv_stream_t *server, int status);
 void on_alloc_req_buf(uv_handle_t *client, size_t size, uv_buf_t *buf);
 void on_read_request(uv_stream_t *client, long nread, const uv_buf_t *buf);
 void on_close_connection(uv_handle_t *client);
 
 // llhttp parser
-void parse_request(char *raw_buffer, size_t buffer_size, falcon_request *request);
+void parse_request(char *raw_buffer, size_t buffer_size, fReq *request);
 int on_url(llhttp_t *p, const char *at, size_t len);
 int on_method(llhttp_t *p, const char *at, size_t len);
+int on_body(llhttp_t *p, const char *at, size_t len);
 
-void falcon_get(falcon *app, char *path, falcon_route_handler handler)
+void fGet(fApp *app, char *path, falcon_route_handler handler)
 {
   Route *r = (Route *)malloc(sizeof(Route));
   r->path = path;
-  r->method = FALCON_HTTP_GET;
+  r->method = FHTTP_GET;
   r->handler = handler;
   HASH_ADD_STR(Routes_glob, path, r);
 }
 
-void on_write(uv_write_t *req, int status)
-{
-  for (int i = 0; i < req->nbufs; ++i)
-  {
-    // free(req->bufs[0].base);
-  }
-
-  free(req->bufs);
-  free(req);
-
-  uv_close((uv_handle_t *)req->handle, on_close_connection);
-}
-
-void falcon_ok(falcon_response *response)
+void fResOk(fRes *response)
 {
   uv_buf_t *buf = (uv_buf_t *)malloc(sizeof(uv_buf_t));
   uv_write_t *write_req = (uv_write_t *)malloc(sizeof(uv_write_t));
@@ -71,15 +61,11 @@ void falcon_ok(falcon_response *response)
   uv_write(write_req, (uv_stream_t *)response->handler, buf, 1, on_write);
 }
 
-void init_app(falcon *app)
+int fListen(fApp *app, char *host, unsigned int port, falcon_on_listen cb)
 {
+  // Init app
   app->loop = uv_default_loop();
   uv_tcp_init(app->loop, &app->socket);
-}
-
-int falcon_listen(falcon *app, char *host, unsigned int port, falcon_on_listen cb)
-{
-  init_app(app);
 
   struct sockaddr_in address;
   uv_ip4_addr(host, port, &address);
@@ -102,6 +88,19 @@ int falcon_listen(falcon *app, char *host, unsigned int port, falcon_on_listen c
     cb();
 
   return uv_run(app->loop, UV_RUN_DEFAULT);
+}
+
+void on_write(uv_write_t *req, int status)
+{
+  for (int i = 0; i < req->nbufs; ++i)
+  {
+    // free(req->bufs[0].base);
+  }
+
+  free(req->bufs);
+  free(req);
+
+  uv_close((uv_handle_t *)req->handle, on_close_connection);
 }
 
 /**
@@ -138,11 +137,16 @@ void on_alloc_req_buf(uv_handle_t *handle, size_t size, uv_buf_t *buf)
 
 int on_method(llhttp_t *p, const char *at, size_t len)
 {
-  falcon_request *req = (falcon_request *)p->data;
+  fReq *req = (fReq *)p->data;
 
   if (0 == strncmp("GET", at, len))
   {
-    req->method = FALCON_HTTP_GET;
+    req->method = FHTTP_GET;
+    return HPE_OK;
+  }
+  else if (0 == strncmp("POST", at, len))
+  {
+    req->method = FHTTP_POST;
     return HPE_OK;
   }
 
@@ -150,9 +154,17 @@ int on_method(llhttp_t *p, const char *at, size_t len)
   return HPE_INVALID_METHOD;
 }
 
+int on_body(llhttp_t *p, const char *at, size_t len)
+{
+  fReq *req = (fReq *)p->data;
+  req->body = malloc(sizeof(char) * (len + 1));
+  strncpy(req->body, at, len);
+  return HPE_OK;
+}
+
 int on_url(llhttp_t *p, const char *at, size_t len)
 {
-  falcon_request *req = (falcon_request *)p->data;
+  fReq *req = (fReq *)p->data;
 
   req->path = malloc(sizeof(char) * (len + 1));
   strncpy(req->path, at, len);
@@ -165,7 +177,7 @@ int on_url(llhttp_t *p, const char *at, size_t len)
 /**
  * Match an already parsed request to a user defined route to be handled
  */
-void match_request_handler(falcon_request *request)
+void match_request_handler(fReq *request)
 {
   Route *matching_route;
 
@@ -177,7 +189,7 @@ void match_request_handler(falcon_request *request)
     return;
   }
 
-  falcon_response *response = (falcon_response *)malloc(sizeof(falcon_response));
+  fRes *response = (fRes *)malloc(sizeof(fRes));
   response->handler = request->handler;
   matching_route->handler(request, response);
 
@@ -191,7 +203,7 @@ void match_request_handler(falcon_request *request)
  * Parse raw buffer populating the request instance with relevant data
  *
  */
-void parse_request(char *raw_buffer, size_t buffer_size, falcon_request *request)
+void parse_request(char *raw_buffer, size_t buffer_size, fReq *request)
 {
   llhttp_t parser;
   llhttp_settings_t settings;
@@ -199,6 +211,7 @@ void parse_request(char *raw_buffer, size_t buffer_size, falcon_request *request
 
   settings.on_url = on_url;
   settings.on_method = on_method;
+  settings.on_body = on_body;
 
   llhttp_init(&parser, HTTP_REQUEST, &settings);
   parser.data = request;
@@ -231,7 +244,7 @@ void on_read_request(uv_stream_t *client, long nread, const uv_buf_t *buf)
   if (nread > 0)
   {
     // fprintf(stderr, "REQUEST:\n%s\n", buf->base);
-    falcon_request *req = (falcon_request *)malloc(sizeof(falcon_request));
+    fReq *req = (fReq *)malloc(sizeof(fReq));
     req->handler = (uv_handle_t *)client;
     parse_request(buf->base, buf->len, req);
   }

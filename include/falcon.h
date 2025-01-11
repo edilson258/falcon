@@ -5,38 +5,41 @@
 
 typedef enum
 {
-  FALCON_HTTP_GET = 1,
-} falcon_http_method;
+  FHTTP_GET = 1,
+  FHTTP_POST = 2,
+} fHttpMethod;
 
 typedef enum
 {
-  FALCON_HTTP_STATUS_OK = 200,
-  FALCON_HTTP_STATUS_NOT_FOUND = 404,
-} falcon_http_status;
+  FHTTP_STATUS_OK = 200,
+  FHTTP_STATUS_NOT_FOUND = 404,
+} fHttpStatus;
 
 typedef struct
 {
   char *path;
-  falcon_http_method method;
+  fHttpMethod method;
+  char *body;
+
   uv_handle_t *handler;
-} falcon_request;
+} fReq;
 
 typedef struct
 {
   uv_handle_t *handler;
-} falcon_response;
+} fRes;
 
 typedef struct
 {
   uv_loop_t *loop;
   uv_tcp_t socket;
-} falcon;
+} fApp;
 
-typedef void (*falcon_route_handler)(falcon_request *, falcon_response *);
+typedef void (*falcon_route_handler)(fReq *, fRes *);
 typedef void (*falcon_on_listen)();
 
-void falcon_get(falcon *app, char *path, falcon_route_handler handler);
-void falcon_ok(falcon_response *response);
-int falcon_listen(falcon *app, char *host, unsigned int port, falcon_on_listen cb);
+void fGet(fApp *app, char *path, falcon_route_handler handler);
+void fResOk(fRes *response);
+int fListen(fApp *app, char *host, unsigned int port, falcon_on_listen cb);
 
 #endif // __FALCON_HTTP__
