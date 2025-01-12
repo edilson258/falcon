@@ -1,6 +1,7 @@
 #ifndef __FALCON_HTTP__
 #define __FALCON_HTTP__
 
+#include <jack.h>
 #include <uv.h>
 
 typedef enum
@@ -19,7 +20,7 @@ typedef struct
 {
   char *path;
   fHttpMethod method;
-  char *body;
+  void *body;
 
   uv_handle_t *handler;
 } fReq;
@@ -35,11 +36,25 @@ typedef struct
   uv_tcp_t socket;
 } fApp;
 
-typedef void (*falcon_route_handler)(fReq *, fRes *);
-typedef void (*falcon_on_listen)();
+typedef struct
+{
+  char *name;
+  jjson_type type;
+} fField;
 
-void fGet(fApp *app, char *path, falcon_route_handler handler);
-void fResOk(fRes *response);
-int fListen(fApp *app, char *host, unsigned int port, falcon_on_listen cb);
+typedef struct
+{
+  unsigned nfields;
+  fField fields[];
+} fSchema;
+
+typedef void (*fOnListen)();
+typedef void (*fRouteHandler)(fReq *, fRes *);
+
+void fGet(fApp *app, char *path, fRouteHandler handler);
+void fPost(fApp *app, char *path, fRouteHandler handler, fSchema *schema);
+void fResOk(fRes *res);
+void fResOkJson(fRes *res, jjson_t *json);
+int fListen(fApp *app, char *host, unsigned int port, fOnListen cb);
 
 #endif // __FALCON_HTTP__
