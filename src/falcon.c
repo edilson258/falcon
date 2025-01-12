@@ -7,7 +7,6 @@
 #define JACK_IMPLEMENTATION
 #include <jack.h>
 #include <llhttp.h>
-#include <uthash.h>
 #include <uv.h>
 
 #include <falcon.h>
@@ -26,20 +25,6 @@ static char JSON_RESPONSE_TEMPLATE[] = "HTTP/1.1 200 OK\r\n"
                                        "Content-Length: %zu\r\n"
                                        "\r\n"
                                        "%s";
-typedef struct
-{
-  char *id;
-  char *path;
-  fHttpMethod method;
-  fRouteHandler handler;
-  fSchema *schema;
-
-  UT_hash_handle hh; // make struct hashable
-} Route;
-
-int route_id = 0;
-Route *Routes_glob = NULL;
-
 // uv IO callbacks
 void on_write(uv_write_t *req, int status);
 void on_connection(uv_stream_t *server, int status);
@@ -48,12 +33,14 @@ void on_read_request(uv_stream_t *client, long nread, const uv_buf_t *buf);
 void on_close_connection(uv_handle_t *client);
 
 // llhttp parser
-void parse_request(char *raw_buffer, size_t buffer_size, fReq *request);
+void on_parse_request(char *raw_buffer, size_t buffer_size, frequest_t *request);
 int on_url(llhttp_t *p, const char *at, size_t len);
 int on_method(llhttp_t *p, const char *at, size_t len);
 int on_body(llhttp_t *p, const char *at, size_t len);
 
-char *make_route_id(char *path, fHttpMethod method)
+void on_match_request_handler(frequest_t *request);
+
+char *make_route_id(char *path, fhttp_method method)
 {
   size_t buf_sz = snprintf(NULL, 0, "%s-%d", path, method) + 1;
   char *buf = malloc(sizeof(char) * buf_sz);
@@ -61,28 +48,45 @@ char *make_route_id(char *path, fHttpMethod method)
   return buf;
 }
 
-void create_route(fApp *app, char *path, fRouteHandler handler, fHttpMethod method, fSchema *schema)
+typedef struct fRoute
 {
-  Route *route = (Route *)malloc(sizeof(Route));
+  char *id;
+  char *path;
+  fschema_t *schema;
+  fhttp_method method;
+  froute_handler_t handler;
+
+  UT_hash_handle hh; // make struct hashable
+} fRoute;
+
+// Globals
+uv_loop_t *main_loop_glob;
+uv_tcp_t server_sock_glob;
+struct sockaddr_in server_addr_glob;
+fRoute *routes_glob = NULL;
+
+void create_route(falcon_t *app, char *path, froute_handler_t handler, fhttp_method method, fschema_t *schema)
+{
+  fRoute *route = (fRoute *)malloc(sizeof(fRoute));
   route->id = make_route_id(path, method);
   route->path = path;
   route->method = method;
   route->handler = handler;
   route->schema = schema;
-  HASH_ADD_STR(Routes_glob, id, route);
+  HASH_ADD_STR(routes_glob, id, route);
 }
 
-void fGet(fApp *app, char *path, fRouteHandler handler)
+void fget(falcon_t *app, char *path, froute_handler_t handler)
 {
   create_route(app, path, handler, FHTTP_GET, 0);
 }
 
-void fPost(fApp *app, char *path, fRouteHandler handler, fSchema *schema)
+void fpost(falcon_t *app, char *path, froute_handler_t handler, fschema_t *schema)
 {
   create_route(app, path, handler, FHTTP_POST, schema);
 }
 
-void fResOk(fRes *response)
+void fres_ok(fresponse_t *response)
 {
   uv_buf_t *buf = (uv_buf_t *)malloc(sizeof(uv_buf_t));
   uv_write_t *write_req = (uv_write_t *)malloc(sizeof(uv_write_t));
@@ -93,7 +97,7 @@ void fResOk(fRes *response)
   uv_write(write_req, (uv_stream_t *)response->handler, buf, 1, on_write);
 }
 
-void fResOkJson(fRes *res, jjson_t *json)
+void fres_json(fresponse_t *res, jjson_t *json)
 {
   char *body;
   enum jjson_error err = jjson_stringify(json, 2, &body);
@@ -113,23 +117,28 @@ void fResOkJson(fRes *res, jjson_t *json)
   uv_write(write_req, (uv_stream_t *)res->handler, buf, 1, on_write);
 }
 
-int fListen(fApp *app, char *host, unsigned int port, fOnListen cb)
+int init_server(char *host, unsigned port)
 {
-  // Init app
-  app->loop = uv_default_loop();
-  uv_tcp_init(app->loop, &app->socket);
+  main_loop_glob = uv_default_loop();
+  uv_tcp_init(main_loop_glob, &server_sock_glob);
+  // TODO: validate host and port
+  uv_ip4_addr(host, port, &server_addr_glob);
+  return 0;
+}
 
-  struct sockaddr_in address;
-  uv_ip4_addr(host, port, &address);
+int flisten(falcon_t *app, char *host, unsigned int port, fon_listen_t cb)
+{
+  int result = 0;
+  init_server(host, port);
 
-  int result = uv_tcp_bind(&app->socket, (const struct sockaddr *)&address, 0);
+  result = uv_tcp_bind(&server_sock_glob, (const struct sockaddr *)&server_addr_glob, 0);
   if (result)
   {
     fprintf(stderr, "Bind failed, %s\n", uv_strerror(result));
     return -1;
   }
 
-  result = uv_listen((uv_stream_t *)&app->socket, 1024, on_connection);
+  result = uv_listen((uv_stream_t *)&server_sock_glob, 1024, on_connection);
   if (result)
   {
     fprintf(stderr, "Listen failed, %s\n", uv_strerror(result));
@@ -139,20 +148,7 @@ int fListen(fApp *app, char *host, unsigned int port, fOnListen cb)
   if (cb)
     cb();
 
-  return uv_run(app->loop, UV_RUN_DEFAULT);
-}
-
-void on_write(uv_write_t *req, int status)
-{
-  for (int i = 0; i < req->nbufs; ++i)
-  {
-    // free(req->bufs[0].base);
-  }
-
-  free(req->bufs);
-  free(req);
-
-  uv_close((uv_handle_t *)req->handle, on_close_connection);
+  return uv_run(main_loop_glob, UV_RUN_DEFAULT);
 }
 
 /**
@@ -169,6 +165,7 @@ void on_connection(uv_stream_t *server, int status)
 
   uv_tcp_t *client = (uv_tcp_t *)malloc(sizeof(uv_tcp_t));
   uv_tcp_init(server->loop, client);
+  client->data = server->data;
 
   int result = uv_accept(server, (uv_stream_t *)client);
 
@@ -187,96 +184,35 @@ void on_alloc_req_buf(uv_handle_t *handle, size_t size, uv_buf_t *buf)
   buf->len = size;
 }
 
-int on_method(llhttp_t *p, const char *at, size_t len)
-{
-  fReq *req = (fReq *)p->data;
-
-  if (0 == strncmp("GET", at, len))
-  {
-    req->method = FHTTP_GET;
-    return HPE_OK;
-  }
-  else if (0 == strncmp("POST", at, len))
-  {
-    req->method = FHTTP_POST;
-    return HPE_OK;
-  }
-
-  // printf("%.*s\n", (int)len, at);
-  return HPE_INVALID_METHOD;
-}
-
-int on_body(llhttp_t *p, const char *at, size_t len)
-{
-  fReq *req = (fReq *)p->data;
-  req->body = malloc(sizeof(char) * (len + 1));
-  strncpy((char *)req->body, at, len);
-  ((char *)req->body)[len] = '\0';
-  return HPE_OK;
-}
-
-int on_url(llhttp_t *p, const char *at, size_t len)
-{
-  fReq *req = (fReq *)p->data;
-
-  req->path = malloc(sizeof(char) * (len + 1));
-  strncpy(req->path, at, len);
-  req->path[len] = '\0';
-
-  // printf("%.*s\n", (int)len, at);
-  return HPE_OK;
-}
-
 /**
- * Match an already parsed request to a user defined route to be handled
+ * A callback run after reading the client socket has completed
+ *
  */
-void match_request_handler(fReq *request)
+void on_read_request(uv_stream_t *client, long nread, const uv_buf_t *buf)
 {
-  Route *match_route;
-
-  HASH_FIND_STR(Routes_glob, make_route_id(request->path, request->method), match_route);
-
-  if (!match_route || match_route->method != request->method)
+  if (nread > 0)
   {
-    // TODOO: respond with 404
-    return;
+    frequest_t *req = (frequest_t *)malloc(sizeof(frequest_t));
+    req->handler = (uv_handle_t *)client;
+    on_parse_request(buf->base, nread, req);
   }
-
-  if (request->method == FHTTP_POST && match_route->schema)
+  else if (nread < 0)
   {
-    printf("%s\n", (char *)request->body);
-
-    jjson_t *json = (jjson_t *)malloc(sizeof(jjson_t));
-    jjson_init(json);
-
-    enum jjson_error err = jjson_parse(json, request->body);
-    if (JJE_OK != err)
-      assert(!"Not implemented");
-
-    for (int i = 0; i < match_route->schema->nfields; ++i)
+    if (nread != UV_EOF)
     {
-      const fField *field = &match_route->schema->fields[i];
-      jjson_value *match_val;
-      err = jjson_get(json, field->name, &match_val);
-      if (JJE_OK != err || match_val->type != field->type)
-        assert(!"Not implemented");
+      fprintf(stderr, "Failed to read request, %s\n", uv_strerror(nread));
     }
-
-    free(request->body);
-    request->body = json;
+    uv_close((uv_handle_t *)client, on_close_connection);
   }
-
-  fRes *response = (fRes *)malloc(sizeof(fRes));
-  response->handler = request->handler;
-  match_route->handler(request, response);
 }
 
 /**
  * Parse raw buffer populating the request instance with relevant data
  *
  */
-void parse_request(char *raw_buffer, size_t buffer_size, fReq *request)
+void on_parse_request(char *raw_buffer, size_t buffer_size, frequest_t *request)
 {
+  // TODO: reuse same parser
   llhttp_t parser;
   llhttp_settings_t settings;
   llhttp_settings_init(&settings);
@@ -295,30 +231,101 @@ void parse_request(char *raw_buffer, size_t buffer_size, fReq *request)
    */
   free(raw_buffer);
 
-  match_request_handler(request);
+  on_match_request_handler(request);
+}
+
+int on_method(llhttp_t *p, const char *at, size_t len)
+{
+  frequest_t *req = (frequest_t *)p->data;
+
+  if (0 == strncmp("GET", at, len))
+  {
+    req->method = FHTTP_GET;
+    return HPE_OK;
+  }
+  else if (0 == strncmp("POST", at, len))
+  {
+    req->method = FHTTP_POST;
+    return HPE_OK;
+  }
+
+  // printf("%.*s\n", (int)len, at);
+  return HPE_INVALID_METHOD;
+}
+
+int on_body(llhttp_t *p, const char *at, size_t len)
+{
+  frequest_t *req = (frequest_t *)p->data;
+  req->body = malloc(sizeof(char) * (len + 1));
+  strncpy((char *)req->body, at, len);
+  ((char *)req->body)[len] = '\0';
+  return HPE_OK;
+}
+
+int on_url(llhttp_t *p, const char *at, size_t len)
+{
+  frequest_t *req = (frequest_t *)p->data;
+
+  req->path = malloc(sizeof(char) * (len + 1));
+  strncpy(req->path, at, len);
+  req->path[len] = '\0';
+
+  // printf("%.*s\n", (int)len, at);
+  return HPE_OK;
 }
 
 /**
- * A callback run after reading the client socket has completed
- *
+ * Match an already parsed request to a user defined route to be handled
  */
-void on_read_request(uv_stream_t *client, long nread, const uv_buf_t *buf)
+void on_match_request_handler(frequest_t *request)
 {
-  if (nread > 0)
+  fRoute *match_route;
+  HASH_FIND_STR(routes_glob, make_route_id(request->path, request->method), match_route);
+
+  if (!match_route || match_route->method != request->method)
   {
-    // fprintf(stderr, "REQUEST:\n%s\n", buf->base);
-    fReq *req = (fReq *)malloc(sizeof(fReq));
-    req->handler = (uv_handle_t *)client;
-    parse_request(buf->base, buf->len, req);
+    // TODOO: respond with 404
+    return;
   }
-  else if (nread < 0)
+
+  if (match_route->schema)
   {
-    if (nread != UV_EOF)
+    jjson_t *json = (jjson_t *)malloc(sizeof(jjson_t));
+    jjson_init(json);
+
+    enum jjson_error err = jjson_parse(json, request->body);
+    if (JJE_OK != err)
+      assert(!"Not implemented");
+
+    for (int i = 0; i < match_route->schema->nfields; ++i)
     {
-      fprintf(stderr, "Failed to read request, %s\n", uv_strerror(nread));
+      const ffield_t *field = &match_route->schema->fields[i];
+      jjson_value *match_val;
+      err = jjson_get(json, field->name, &match_val);
+      if (JJE_OK != err || match_val->type != field->type)
+        assert(!"Not implemented");
     }
-    uv_close((uv_handle_t *)client, on_close_connection);
+
+    free(request->body);
+    request->body = json;
   }
+
+  fresponse_t *response = (fresponse_t *)malloc(sizeof(fresponse_t));
+  response->handler = request->handler;
+  match_route->handler(request, response);
+}
+
+void on_write(uv_write_t *req, int status)
+{
+  for (int i = 0; i < req->nbufs; ++i)
+  {
+    // free(req->bufs[0].base);
+  }
+
+  free(req->bufs);
+  free(req);
+
+  uv_close((uv_handle_t *)req->handle, on_close_connection);
 }
 
 /**

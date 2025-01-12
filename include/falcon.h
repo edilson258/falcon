@@ -2,59 +2,59 @@
 #define __FALCON_HTTP__
 
 #include <jack.h>
+#include <uthash.h>
 #include <uv.h>
 
 typedef enum
 {
   FHTTP_GET = 1,
   FHTTP_POST = 2,
-} fHttpMethod;
+} fhttp_method;
 
 typedef enum
 {
   FHTTP_STATUS_OK = 200,
   FHTTP_STATUS_NOT_FOUND = 404,
-} fHttpStatus;
+} fhttp_status;
 
 typedef struct
 {
   char *path;
-  fHttpMethod method;
   void *body;
-
+  fhttp_method method;
   uv_handle_t *handler;
-} fReq;
+} frequest_t;
 
 typedef struct
 {
   uv_handle_t *handler;
-} fRes;
+  struct fApp *app;
+} fresponse_t;
 
-typedef struct
-{
-  uv_loop_t *loop;
-  uv_tcp_t socket;
-} fApp;
+typedef void (*froute_handler_t)(frequest_t *, fresponse_t *);
 
 typedef struct
 {
   char *name;
   jjson_type type;
-} fField;
+} ffield_t;
 
 typedef struct
 {
   unsigned nfields;
-  fField fields[];
-} fSchema;
+  ffield_t fields[];
+} fschema_t;
 
-typedef void (*fOnListen)();
-typedef void (*fRouteHandler)(fReq *, fRes *);
+typedef struct
+{
+} falcon_t;
 
-void fGet(fApp *app, char *path, fRouteHandler handler);
-void fPost(fApp *app, char *path, fRouteHandler handler, fSchema *schema);
-void fResOk(fRes *res);
-void fResOkJson(fRes *res, jjson_t *json);
-int fListen(fApp *app, char *host, unsigned int port, fOnListen cb);
+typedef void (*fon_listen_t)();
+
+void fget(falcon_t *app, char *path, froute_handler_t handler);
+void fpost(falcon_t *app, char *path, froute_handler_t handler, fschema_t *schema);
+void fres_ok(fresponse_t *res);
+void fres_json(fresponse_t *res, jjson_t *json);
+int flisten(falcon_t *app, char *host, unsigned int port, fon_listen_t cb);
 
 #endif // __FALCON_HTTP__
