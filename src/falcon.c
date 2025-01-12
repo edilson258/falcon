@@ -13,6 +13,9 @@
 #include <falcon.h>
 
 char CONTENT_TYPE_PLAIN[] = "text/plain";
+char CONTENT_TYPE_HTML[] = "text/html";
+char CONTENT_TYPE_JSON[] = "application/json";
+
 char OK_RESPONSE[] = "HTTP/1.1 200 OK\r\n"
                      "Server: Falcon\r\n"
                      "Content-Type: text/plain\r\n"
@@ -33,6 +36,12 @@ char RESPONSE_TEMPLATE[] = "HTTP/1.1 %d %s\r\n"
                            "Content-Length: %zu\r\n"
                            "\r\n"
                            "%s";
+
+char HTTP_RESPONSE_HEADER_TEMPLATE[] = "HTTP/1.1 %d %s\r\n"
+                                       "Server: Falcon\r\n"
+                                       "Content-Type: %s\r\n"
+                                       "Content-Length: %zu\r\n"
+                                       "\r\n";
 
 char HTML_TEMPLATE[] = "<!DOCTYPE html>\n"
                        "<html lang=\"en\">\n"
@@ -135,40 +144,52 @@ void fres_json(fresponse_t *res, jjson_t *json)
   uv_write(write_req, (uv_stream_t *)res->handler, write_buf, 1, on_write);
 }
 
-void send_bad_req_response(frequest_t *request)
+void send_http_response(uv_handle_t *handler, char *head, size_t head_sz, char *body, size_t body_sz)
 {
-  char *msg = "Bad request";
-  size_t body_buf_sz = snprintf(NULL, 0, HTML_TEMPLATE, msg, msg) + 1;
-  char body_buf[body_buf_sz];
-  snprintf(body_buf, body_buf_sz, HTML_TEMPLATE, msg, msg);
+  /**
+   * Some http parsers stop parsing when encounter a null terminator
+   * i decrement buf sizes to remove them.
+   * I think removing null terminator is not a big deal because the http protocol
+   * itself doesn't rely on them to check the end of buffers
+   */
+  head_sz--;
+  body_sz--;
 
-  size_t res_buf_sz = snprintf(NULL, 0, RESPONSE_TEMPLATE, FHTTP_STATUS_BAD_REQ, msg, "text/html", body_buf_sz, body_buf);
-  char res_buf[res_buf_sz + 1];
-  snprintf(res_buf, res_buf_sz + 1, RESPONSE_TEMPLATE, FHTTP_STATUS_BAD_REQ, msg, "text/html", body_buf_sz, body_buf);
+  uv_buf_t *write_bufs = (uv_buf_t *)malloc(sizeof(uv_buf_t) * 2);
+  write_bufs[0] = uv_buf_init(head, head_sz);
+  write_bufs[1] = uv_buf_init(body, body_sz);
 
   uv_write_t *write_req = (uv_write_t *)malloc(sizeof(uv_write_t));
-  uv_buf_t *write_buf = (uv_buf_t *)malloc(sizeof(uv_buf_t));
+  uv_write(write_req, (uv_stream_t *)handler, write_bufs, 2, on_write);
+}
 
-  *write_buf = uv_buf_init(res_buf, res_buf_sz);
-  uv_write(write_req, (uv_stream_t *)request->handler, write_buf, 1, on_write);
+void send_html_response(uv_handle_t *handler, fhttp_status status, char *title, char *message)
+{
+  size_t body_buf_sz = snprintf(NULL, 0, HTML_TEMPLATE, title, message) + 1;
+  char body_buf[body_buf_sz];
+  snprintf(body_buf, body_buf_sz, HTML_TEMPLATE, title, message);
+
+  size_t head_buf_sz = snprintf(NULL, 0, HTTP_RESPONSE_HEADER_TEMPLATE, status, FHTTP_STATUS_STR(status), CONTENT_TYPE_HTML, body_buf_sz) + 1;
+  char head_buf[head_buf_sz];
+  snprintf(head_buf, head_buf_sz, HTTP_RESPONSE_HEADER_TEMPLATE, status, FHTTP_STATUS_STR(status), CONTENT_TYPE_HTML, body_buf_sz);
+
+  send_http_response(handler, head_buf, head_buf_sz, body_buf, body_buf_sz);
 }
 
 void send_404_response(frequest_t *request)
 {
-  char *msg = "Not found";
-  size_t body_buf_sz = snprintf(NULL, 0, HTML_TEMPLATE, msg, msg) + 1;
-  char body_buf[body_buf_sz];
-  snprintf(body_buf, body_buf_sz, HTML_TEMPLATE, msg, msg);
+  char *title = "Not found";
+  char *message = "Cannot GET /hello";
+  fhttp_status status = FHTTP_STATUS_NOT_FOUND;
+  send_html_response(request->handler, status, title, message);
+}
 
-  size_t res_buf_sz = snprintf(NULL, 0, RESPONSE_TEMPLATE, FHTTP_STATUS_NOT_FOUND, msg, "text/html", body_buf_sz, body_buf);
-  char res_buf[res_buf_sz + 1];
-  snprintf(res_buf, res_buf_sz + 1, RESPONSE_TEMPLATE, FHTTP_STATUS_NOT_FOUND, msg, "text/html", body_buf_sz, body_buf);
-
-  uv_write_t *write_req = (uv_write_t *)malloc(sizeof(uv_write_t));
-  uv_buf_t *write_buf = (uv_buf_t *)malloc(sizeof(uv_buf_t));
-
-  *write_buf = uv_buf_init(res_buf, res_buf_sz);
-  uv_write(write_req, (uv_stream_t *)request->handler, write_buf, 1, on_write);
+void send_bad_req_response(frequest_t *request)
+{
+  char *title = "Bad request";
+  char *message = "Bad request";
+  fhttp_status status = FHTTP_STATUS_BAD_REQ;
+  send_html_response(request->handler, status, title, message);
 }
 
 int init_server(char *host, unsigned port)
