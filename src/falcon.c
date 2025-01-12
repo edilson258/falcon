@@ -46,6 +46,17 @@ char HTML_TEMPLATE[] = "<!DOCTYPE html>\n"
                        "</body>\n"
                        "</html>\n";
 
+#define FHTTP_METHOD_STR(method)     \
+  ((method) == FHTTP_GET    ? "GET"  \
+   : (method) == FHTTP_POST ? "POST" \
+                            : "Unkown HTTP method")
+
+#define FHTTP_STATUS_STR(status)                        \
+  ((status) == FHTTP_STATUS_OK          ? "OK"          \
+   : (status) == FHTTP_STATUS_BAD_REQ   ? "Bad request" \
+   : (status) == FHTTP_STATUS_NOT_FOUND ? "Not found"   \
+                                        : "Unkown HTTP status code")
+
 // uv IO callbacks
 void on_write(uv_write_t *req, int status);
 void on_connection(uv_stream_t *server, int status);
