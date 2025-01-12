@@ -61,26 +61,25 @@ char *make_route_id(char *path, fHttpMethod method)
   return buf;
 }
 
+void create_route(fApp *app, char *path, fRouteHandler handler, fHttpMethod method, fSchema *schema)
+{
+  Route *route = (Route *)malloc(sizeof(Route));
+  route->id = make_route_id(path, method);
+  route->path = path;
+  route->method = method;
+  route->handler = handler;
+  route->schema = schema;
+  HASH_ADD_STR(Routes_glob, id, route);
+}
+
 void fGet(fApp *app, char *path, fRouteHandler handler)
 {
-  Route *r = (Route *)malloc(sizeof(Route));
-  r->id = make_route_id(path, FHTTP_GET);
-  r->path = path;
-  r->method = FHTTP_GET;
-  r->handler = handler;
-  r->schema = NULL;
-  HASH_ADD_STR(Routes_glob, id, r);
+  create_route(app, path, handler, FHTTP_GET, 0);
 }
 
 void fPost(fApp *app, char *path, fRouteHandler handler, fSchema *schema)
 {
-  Route *r = (Route *)malloc(sizeof(Route));
-  r->id = make_route_id(path, FHTTP_POST);
-  r->path = path;
-  r->method = FHTTP_POST;
-  r->handler = handler;
-  r->schema = schema;
-  HASH_ADD_STR(Routes_glob, id, r);
+  create_route(app, path, handler, FHTTP_POST, schema);
 }
 
 void fResOk(fRes *response)
