@@ -69,17 +69,6 @@ char *make_route_id(char *path, fhttp_method method)
   return buf;
 }
 
-typedef struct fRoute
-{
-  char *id;
-  char *path;
-  fschema_t *schema;
-  fhttp_method method;
-  froute_handler_t handler;
-
-  UT_hash_handle hh; // make struct hashable
-} fRoute;
-
 // Globals
 uv_loop_t *main_loop_glob;
 uv_tcp_t server_sock_glob;
