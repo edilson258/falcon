@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <stdarg.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,20 +12,40 @@
 
 #include <falcon.h>
 
-static char CONTENT_TYPE_PLAIN[] = "text/plain";
-static char OK_RESPONSE[] = "HTTP/1.1 200 OK\r\n"
-                            "Server: Falcon\r\n"
-                            "Content-Type: text/plain\r\n"
-                            "Content-Length: 2\r\n"
-                            "\r\n"
-                            "Ok";
+char CONTENT_TYPE_PLAIN[] = "text/plain";
+char OK_RESPONSE[] = "HTTP/1.1 200 OK\r\n"
+                     "Server: Falcon\r\n"
+                     "Content-Type: text/plain\r\n"
+                     "Content-Length: 2\r\n"
+                     "\r\n"
+                     "Ok";
 
-static char JSON_RESPONSE_TEMPLATE[] = "HTTP/1.1 200 OK\r\n"
-                                       "Server: Falcon\r\n"
-                                       "Content-Type: application/json\r\n"
-                                       "Content-Length: %zu\r\n"
-                                       "\r\n"
-                                       "%s";
+char JSON_RESPONSE_TEMPLATE[] = "HTTP/1.1 200 OK\r\n"
+                                "Server: Falcon\r\n"
+                                "Content-Type: application/json\r\n"
+                                "Content-Length: %zu\r\n"
+                                "\r\n"
+                                "%s";
+
+char RESPONSE_TEMPLATE[] = "HTTP/1.1 %d %s\r\n"
+                           "Server: Falcon\r\n"
+                           "Content-Type: %s\r\n"
+                           "Content-Length: %zu\r\n"
+                           "\r\n"
+                           "%s";
+
+char HTML_TEMPLATE[] = "<!DOCTYPE html>\n"
+                       "<html lang=\"en\">\n"
+                       "<head>\n"
+                       "  <meta charset=\"UTF-8\">\n"
+                       "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n"
+                       "  <title>%s</title>\n"
+                       "</head>\n"
+                       "<body>\n"
+                       "  %s\n"
+                       "</body>\n"
+                       "</html>\n";
+
 // uv IO callbacks
 void on_write(uv_write_t *req, int status);
 void on_connection(uv_stream_t *server, int status);
@@ -104,17 +125,50 @@ void fres_json(fresponse_t *res, jjson_t *json)
   assert(err == JJE_OK);
   size_t body_size = strlen(body);
 
-  size_t res_size = snprintf(NULL, 0, JSON_RESPONSE_TEMPLATE, body_size, body) + 1;
-  char res_buf[res_size];
-  snprintf(res_buf, res_size, JSON_RESPONSE_TEMPLATE, body_size, body);
+  size_t res_size = snprintf(NULL, 0, JSON_RESPONSE_TEMPLATE, body_size, body);
+  char res_buf[res_size + 1];
+  snprintf(res_buf, res_size + 1, JSON_RESPONSE_TEMPLATE, body_size, body);
 
-  uv_buf_t *buf = (uv_buf_t *)malloc(sizeof(uv_buf_t));
   uv_write_t *write_req = (uv_write_t *)malloc(sizeof(uv_write_t));
+  uv_buf_t *write_buf = (uv_buf_t *)malloc(sizeof(uv_buf_t));
+  *write_buf = uv_buf_init(res_buf, res_size);
+  uv_write(write_req, (uv_stream_t *)res->handler, write_buf, 1, on_write);
+}
 
-  buf->base = res_buf;
-  buf->len = res_size - 1;
+void send_bad_req_response(frequest_t *request)
+{
+  char *msg = "Bad request";
+  size_t body_buf_sz = snprintf(NULL, 0, HTML_TEMPLATE, msg, msg) + 1;
+  char body_buf[body_buf_sz];
+  snprintf(body_buf, body_buf_sz, HTML_TEMPLATE, msg, msg);
 
-  uv_write(write_req, (uv_stream_t *)res->handler, buf, 1, on_write);
+  size_t res_buf_sz = snprintf(NULL, 0, RESPONSE_TEMPLATE, FHTTP_STATUS_BAD_REQ, msg, "text/html", body_buf_sz, body_buf);
+  char res_buf[res_buf_sz + 1];
+  snprintf(res_buf, res_buf_sz + 1, RESPONSE_TEMPLATE, FHTTP_STATUS_BAD_REQ, msg, "text/html", body_buf_sz, body_buf);
+
+  uv_write_t *write_req = (uv_write_t *)malloc(sizeof(uv_write_t));
+  uv_buf_t *write_buf = (uv_buf_t *)malloc(sizeof(uv_buf_t));
+
+  *write_buf = uv_buf_init(res_buf, res_buf_sz);
+  uv_write(write_req, (uv_stream_t *)request->handler, write_buf, 1, on_write);
+}
+
+void send_404_response(frequest_t *request)
+{
+  char *msg = "Not found";
+  size_t body_buf_sz = snprintf(NULL, 0, HTML_TEMPLATE, msg, msg) + 1;
+  char body_buf[body_buf_sz];
+  snprintf(body_buf, body_buf_sz, HTML_TEMPLATE, msg, msg);
+
+  size_t res_buf_sz = snprintf(NULL, 0, RESPONSE_TEMPLATE, FHTTP_STATUS_NOT_FOUND, msg, "text/html", body_buf_sz, body_buf);
+  char res_buf[res_buf_sz + 1];
+  snprintf(res_buf, res_buf_sz + 1, RESPONSE_TEMPLATE, FHTTP_STATUS_NOT_FOUND, msg, "text/html", body_buf_sz, body_buf);
+
+  uv_write_t *write_req = (uv_write_t *)malloc(sizeof(uv_write_t));
+  uv_buf_t *write_buf = (uv_buf_t *)malloc(sizeof(uv_buf_t));
+
+  *write_buf = uv_buf_init(res_buf, res_buf_sz);
+  uv_write(write_req, (uv_stream_t *)request->handler, write_buf, 1, on_write);
 }
 
 int init_server(char *host, unsigned port)
@@ -168,7 +222,6 @@ void on_connection(uv_stream_t *server, int status)
   client->data = server->data;
 
   int result = uv_accept(server, (uv_stream_t *)client);
-
   if (result != 0)
   {
     fprintf(stderr, "Accept failed, %s\n", uv_strerror(result));
@@ -196,12 +249,8 @@ void on_read_request(uv_stream_t *client, long nread, const uv_buf_t *buf)
     req->handler = (uv_handle_t *)client;
     on_parse_request(buf->base, nread, req);
   }
-  else if (nread < 0)
+  else
   {
-    if (nread != UV_EOF)
-    {
-      fprintf(stderr, "Failed to read request, %s\n", uv_strerror(nread));
-    }
     uv_close((uv_handle_t *)client, on_close_connection);
   }
 }
@@ -210,7 +259,7 @@ void on_read_request(uv_stream_t *client, long nread, const uv_buf_t *buf)
  * Parse raw buffer populating the request instance with relevant data
  *
  */
-void on_parse_request(char *raw_buffer, size_t buffer_size, frequest_t *request)
+void on_parse_request(char *raw_buf, size_t buf_sz, frequest_t *request)
 {
   // TODO: reuse same parser
   llhttp_t parser;
@@ -224,12 +273,13 @@ void on_parse_request(char *raw_buffer, size_t buffer_size, frequest_t *request)
   llhttp_init(&parser, HTTP_REQUEST, &settings);
   parser.data = request;
 
-  enum llhttp_errno _ = llhttp_execute(&parser, raw_buffer, buffer_size);
+  enum llhttp_errno parse_err = llhttp_execute(&parser, raw_buf, buf_sz);
 
-  /**
-   * At this point the request has been parsed and the raw buffer is not longer needed
-   */
-  free(raw_buffer);
+  // At this point the request has been parsed and the raw buffer is no longer needed
+  free(raw_buf);
+
+  if (parse_err != HPE_OK)
+    return send_bad_req_response(request);
 
   on_match_request_handler(request);
 }
@@ -237,7 +287,6 @@ void on_parse_request(char *raw_buffer, size_t buffer_size, frequest_t *request)
 int on_method(llhttp_t *p, const char *at, size_t len)
 {
   frequest_t *req = (frequest_t *)p->data;
-
   if (0 == strncmp("GET", at, len))
   {
     req->method = FHTTP_GET;
@@ -248,8 +297,6 @@ int on_method(llhttp_t *p, const char *at, size_t len)
     req->method = FHTTP_POST;
     return HPE_OK;
   }
-
-  // printf("%.*s\n", (int)len, at);
   return HPE_INVALID_METHOD;
 }
 
@@ -265,12 +312,9 @@ int on_body(llhttp_t *p, const char *at, size_t len)
 int on_url(llhttp_t *p, const char *at, size_t len)
 {
   frequest_t *req = (frequest_t *)p->data;
-
   req->path = malloc(sizeof(char) * (len + 1));
   strncpy(req->path, at, len);
   req->path[len] = '\0';
-
-  // printf("%.*s\n", (int)len, at);
   return HPE_OK;
 }
 
@@ -280,12 +324,12 @@ int on_url(llhttp_t *p, const char *at, size_t len)
 void on_match_request_handler(frequest_t *request)
 {
   fRoute *match_route;
-  HASH_FIND_STR(routes_glob, make_route_id(request->path, request->method), match_route);
+  char *id = make_route_id(request->path, request->method);
+  HASH_FIND_STR(routes_glob, id, match_route);
 
-  if (!match_route || match_route->method != request->method)
+  if (!match_route)
   {
-    // TODOO: respond with 404
-    return;
+    return send_404_response(request);
   }
 
   if (match_route->schema)
@@ -295,7 +339,7 @@ void on_match_request_handler(frequest_t *request)
 
     enum jjson_error err = jjson_parse(json, request->body);
     if (JJE_OK != err)
-      assert(!"Not implemented");
+      return send_bad_req_response(request);
 
     for (int i = 0; i < match_route->schema->nfields; ++i)
     {
@@ -303,7 +347,7 @@ void on_match_request_handler(frequest_t *request)
       jjson_value *match_val;
       err = jjson_get(json, field->name, &match_val);
       if (JJE_OK != err || match_val->type != field->type)
-        assert(!"Not implemented");
+        return send_bad_req_response(request);
     }
 
     free(request->body);
