@@ -9,7 +9,7 @@ struct User
   char *password;
 };
 
-fSchema user_schema = {
+fschema_t user_schema = {
     .nfields = 2,
     .fields = {
         {.name = "email", .type = JSON_STRING},
@@ -23,15 +23,15 @@ void on_listen();
 void add_user(char *username, char *password);
 
 // Endpoints
-void users_find(fReq *req, fRes *res);
-void users_create(fReq *req, fRes *res);
+void users_find(frequest_t *req, fresponse_t *res);
+void users_create(frequest_t *req, fresponse_t *res);
 
 int main(void)
 {
-  fApp app;
-  fGet(&app, "/users", users_find);
-  fPost(&app, "/users", users_create, &user_schema);
-  fListen(&app, "127.0.0.1", 8080, on_listen);
+  falcon_t app;
+  fget(&app, "/users", users_find);
+  fpost(&app, "/users", users_create, &user_schema);
+  flisten(&app, "127.0.0.1", 8080, on_listen);
 }
 
 void on_listen()
@@ -44,7 +44,7 @@ void add_user(char *email, char *password)
   users[users_count++] = (struct User){.email = email, .password = password};
 }
 
-void users_find(fReq *req, fRes *res)
+void users_find(frequest_t *req, fresponse_t *res)
 {
   jjson_t json;
   jjson_array arr;
@@ -84,10 +84,10 @@ void users_find(fReq *req, fRes *res)
 
   jjson_add(&json, kv);
 
-  fResOkJson(res, &json);
+  fres_json(res, &json);
 }
 
-void users_create(fReq *req, fRes *res)
+void users_create(frequest_t *req, fresponse_t *res)
 {
   jjson_t json = *((jjson_t *)req->body);
 
@@ -95,5 +95,5 @@ void users_create(fReq *req, fRes *res)
   JJSON_GET_STRING(json, "password", password);
   add_user(email, password);
 
-  fResOk(res);
+  fres_ok(res);
 }
