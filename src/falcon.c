@@ -101,7 +101,7 @@ void send_404_response(frequest_t *request);
 void send_bad_req_response(frequest_t *request);
 void send_json_response(fresponse_t *res, char *pload, size_t pload_len);
 void send_html_response(uv_handle_t *handler, fhttp_status status, char *title, char *message);
-void send_http_response(uv_handle_t *handler, char *head, size_t head_len, char *body, size_t body_len);
+void send_http_response(uv_handle_t *handler, fhttp_status status, char *cont_type, char *body, size_t body_len);
 
 /**
  * EXTERANL API
@@ -372,20 +372,15 @@ char *make_route_id(char *path, fhttp_method method)
  * RESPONSE HANDLERS
  */
 
-void send_http_response(uv_handle_t *handler, char *head, size_t head_sz, char *body, size_t body_sz)
+void send_http_response(uv_handle_t *handler, fhttp_status status, char *cont_type, char *body, size_t body_len)
 {
-  /**
-   * Some http parsers stop parsing when encounter a null terminator
-   * i decrement buf sizes to remove them.
-   * I think removing null terminator is not a big deal because the http protocol
-   * itself doesn't rely on them to check the end of buffers
-   */
-  head_sz--;
-  body_sz--;
+  size_t head_len = snprintf(NULL, 0, HTTP_RESPONSE_HEADER_TEMPLATE, status, FHTTP_STATUS_STR(status), cont_type, body_len) + 1;
+  char head[head_len];
+  snprintf(head, head_len, HTTP_RESPONSE_HEADER_TEMPLATE, status, FHTTP_STATUS_STR(status), cont_type, body_len);
 
   uv_buf_t *write_bufs = (uv_buf_t *)malloc(sizeof(uv_buf_t) * 2);
-  write_bufs[0] = uv_buf_init(head, head_sz);
-  write_bufs[1] = uv_buf_init(body, body_sz);
+  write_bufs[0] = uv_buf_init(head, head_len - 1);
+  write_bufs[1] = uv_buf_init(body, body_len - 1);
 
   uv_write_t *write_req = (uv_write_t *)malloc(sizeof(uv_write_t));
   uv_write(write_req, (uv_stream_t *)handler, write_bufs, 2, on_write);
@@ -397,11 +392,7 @@ void send_html_response(uv_handle_t *handler, fhttp_status status, char *title, 
   char body_buf[body_buf_sz];
   snprintf(body_buf, body_buf_sz, HTML_TEMPLATE, title, message);
 
-  size_t head_buf_sz = snprintf(NULL, 0, HTTP_RESPONSE_HEADER_TEMPLATE, status, FHTTP_STATUS_STR(status), CONTENT_TYPE_HTML, body_buf_sz) + 1;
-  char head_buf[head_buf_sz];
-  snprintf(head_buf, head_buf_sz, HTTP_RESPONSE_HEADER_TEMPLATE, status, FHTTP_STATUS_STR(status), CONTENT_TYPE_HTML, body_buf_sz);
-
-  send_http_response(handler, head_buf, head_buf_sz, body_buf, body_buf_sz);
+  send_http_response(handler, status, CONTENT_TYPE_HTML, body_buf, body_buf_sz);
 }
 
 void send_404_response(frequest_t *request)
@@ -422,9 +413,5 @@ void send_bad_req_response(frequest_t *request)
 
 void send_json_response(fresponse_t *res, char *pload, size_t pload_len)
 {
-  size_t http_head_len = snprintf(NULL, 0, HTTP_RESPONSE_HEADER_TEMPLATE, res->status, FHTTP_STATUS_STR(res->status), CONTENT_TYPE_JSON, pload_len) + 1;
-  char http_head[http_head_len];
-  snprintf(http_head, http_head_len, HTTP_RESPONSE_HEADER_TEMPLATE, res->status, FHTTP_STATUS_STR(res->status), CONTENT_TYPE_JSON, pload_len);
-
-  send_http_response(res->handler, http_head, http_head_len, pload, pload_len);
+  send_http_response(res->handler, res->status, CONTENT_TYPE_JSON, pload, pload_len);
 }
