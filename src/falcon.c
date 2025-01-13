@@ -66,6 +66,12 @@ char HTML_TEMPLATE[] = "<!DOCTYPE html>\n"
    : (status) == FHTTP_STATUS_NOT_FOUND ? "Not found"   \
                                         : "Unkown HTTP status code")
 
+// Globals
+uv_loop_t *main_loop_glob;
+uv_tcp_t server_sock_glob;
+struct sockaddr_in server_addr_glob;
+fRoute *routes_glob = NULL;
+
 // uv IO callbacks
 void on_write(uv_write_t *req, int status);
 void on_connection(uv_stream_t *server, int status);
@@ -79,32 +85,27 @@ int on_url(llhttp_t *p, const char *at, size_t len);
 int on_method(llhttp_t *p, const char *at, size_t len);
 int on_body(llhttp_t *p, const char *at, size_t len);
 
+/**
+ * INTERNAL API
+ */
+int init_server(char *host, unsigned port);
 void on_match_request_handler(frequest_t *request);
+char *make_route_id(char *path, fhttp_method method);
+void create_route(falcon_t *app, char *path, froute_handler_t handler, fhttp_method method, fschema_t *schema);
 
-char *make_route_id(char *path, fhttp_method method)
-{
-  size_t buf_sz = snprintf(NULL, 0, "%s-%d", path, method) + 1;
-  char *buf = malloc(sizeof(char) * buf_sz);
-  snprintf(buf, buf_sz, "%s-%d", path, method);
-  return buf;
-}
+/**
+ * RESPONSE HANDLERS
+ */
 
-// Globals
-uv_loop_t *main_loop_glob;
-uv_tcp_t server_sock_glob;
-struct sockaddr_in server_addr_glob;
-fRoute *routes_glob = NULL;
+void send_404_response(frequest_t *request);
+void send_bad_req_response(frequest_t *request);
+void send_json_response(fresponse_t *res, char *pload, size_t pload_len);
+void send_html_response(uv_handle_t *handler, fhttp_status status, char *title, char *message);
+void send_http_response(uv_handle_t *handler, char *head, size_t head_len, char *body, size_t body_len);
 
-void create_route(falcon_t *app, char *path, froute_handler_t handler, fhttp_method method, fschema_t *schema)
-{
-  fRoute *route = (fRoute *)malloc(sizeof(fRoute));
-  route->id = make_route_id(path, method);
-  route->path = path;
-  route->method = method;
-  route->handler = handler;
-  route->schema = schema;
-  HASH_ADD_STR(routes_glob, id, route);
-}
+/**
+ * EXTERANL API
+ */
 
 void fget(falcon_t *app, char *path, froute_handler_t handler)
 {
@@ -118,13 +119,10 @@ void fpost(falcon_t *app, char *path, froute_handler_t handler, fschema_t *schem
 
 void fres_ok(fresponse_t *response)
 {
-  uv_buf_t *buf = (uv_buf_t *)malloc(sizeof(uv_buf_t));
-  uv_write_t *write_req = (uv_write_t *)malloc(sizeof(uv_write_t));
-
-  buf->base = OK_RESPONSE;
-  buf->len = strlen(OK_RESPONSE);
-
-  uv_write(write_req, (uv_stream_t *)response->handler, buf, 1, on_write);
+  char *title = "OK";
+  char *message = "OK";
+  fhttp_status status = FHTTP_STATUS_OK;
+  send_html_response(response->handler, status, title, message);
 }
 
 void fres_json(fresponse_t *res, jjson_t *json)
@@ -132,73 +130,8 @@ void fres_json(fresponse_t *res, jjson_t *json)
   char *body;
   enum jjson_error err = jjson_stringify(json, 2, &body);
   assert(err == JJE_OK);
-  size_t body_size = strlen(body);
-
-  size_t res_size = snprintf(NULL, 0, JSON_RESPONSE_TEMPLATE, body_size, body);
-  char res_buf[res_size + 1];
-  snprintf(res_buf, res_size + 1, JSON_RESPONSE_TEMPLATE, body_size, body);
-
-  uv_write_t *write_req = (uv_write_t *)malloc(sizeof(uv_write_t));
-  uv_buf_t *write_buf = (uv_buf_t *)malloc(sizeof(uv_buf_t));
-  *write_buf = uv_buf_init(res_buf, res_size);
-  uv_write(write_req, (uv_stream_t *)res->handler, write_buf, 1, on_write);
-}
-
-void send_http_response(uv_handle_t *handler, char *head, size_t head_sz, char *body, size_t body_sz)
-{
-  /**
-   * Some http parsers stop parsing when encounter a null terminator
-   * i decrement buf sizes to remove them.
-   * I think removing null terminator is not a big deal because the http protocol
-   * itself doesn't rely on them to check the end of buffers
-   */
-  head_sz--;
-  body_sz--;
-
-  uv_buf_t *write_bufs = (uv_buf_t *)malloc(sizeof(uv_buf_t) * 2);
-  write_bufs[0] = uv_buf_init(head, head_sz);
-  write_bufs[1] = uv_buf_init(body, body_sz);
-
-  uv_write_t *write_req = (uv_write_t *)malloc(sizeof(uv_write_t));
-  uv_write(write_req, (uv_stream_t *)handler, write_bufs, 2, on_write);
-}
-
-void send_html_response(uv_handle_t *handler, fhttp_status status, char *title, char *message)
-{
-  size_t body_buf_sz = snprintf(NULL, 0, HTML_TEMPLATE, title, message) + 1;
-  char body_buf[body_buf_sz];
-  snprintf(body_buf, body_buf_sz, HTML_TEMPLATE, title, message);
-
-  size_t head_buf_sz = snprintf(NULL, 0, HTTP_RESPONSE_HEADER_TEMPLATE, status, FHTTP_STATUS_STR(status), CONTENT_TYPE_HTML, body_buf_sz) + 1;
-  char head_buf[head_buf_sz];
-  snprintf(head_buf, head_buf_sz, HTTP_RESPONSE_HEADER_TEMPLATE, status, FHTTP_STATUS_STR(status), CONTENT_TYPE_HTML, body_buf_sz);
-
-  send_http_response(handler, head_buf, head_buf_sz, body_buf, body_buf_sz);
-}
-
-void send_404_response(frequest_t *request)
-{
-  char *title = "Not found";
-  char *message = "Cannot GET /hello";
-  fhttp_status status = FHTTP_STATUS_NOT_FOUND;
-  send_html_response(request->handler, status, title, message);
-}
-
-void send_bad_req_response(frequest_t *request)
-{
-  char *title = "Bad request";
-  char *message = "Bad request";
-  fhttp_status status = FHTTP_STATUS_BAD_REQ;
-  send_html_response(request->handler, status, title, message);
-}
-
-int init_server(char *host, unsigned port)
-{
-  main_loop_glob = uv_default_loop();
-  uv_tcp_init(main_loop_glob, &server_sock_glob);
-  // TODO: validate host and port
-  uv_ip4_addr(host, port, &server_addr_glob);
-  return 0;
+  size_t body_len = strlen(body);
+  send_json_response(res, body, body_len);
 }
 
 int flisten(falcon_t *app, char *host, unsigned int port, fon_listen_t cb)
@@ -224,6 +157,19 @@ int flisten(falcon_t *app, char *host, unsigned int port, fon_listen_t cb)
     cb();
 
   return uv_run(main_loop_glob, UV_RUN_DEFAULT);
+}
+
+/**
+ * INTERNAL API
+ */
+
+int init_server(char *host, unsigned port)
+{
+  main_loop_glob = uv_default_loop();
+  uv_tcp_init(main_loop_glob, &server_sock_glob);
+  // TODO: validate host and port
+  uv_ip4_addr(host, port, &server_addr_glob);
+  return 0;
 }
 
 /**
@@ -376,6 +322,7 @@ void on_match_request_handler(frequest_t *request)
   }
 
   fresponse_t *response = (fresponse_t *)malloc(sizeof(fresponse_t));
+  response->status = FHTTP_STATUS_OK;
   response->handler = request->handler;
   match_route->handler(request, response);
 }
@@ -400,4 +347,84 @@ void on_write(uv_write_t *req, int status)
 void on_close_connection(uv_handle_t *client)
 {
   free(client);
+}
+
+void create_route(falcon_t *app, char *path, froute_handler_t handler, fhttp_method method, fschema_t *schema)
+{
+  fRoute *route = (fRoute *)malloc(sizeof(fRoute));
+  route->id = make_route_id(path, method);
+  route->path = path;
+  route->method = method;
+  route->handler = handler;
+  route->schema = schema;
+  HASH_ADD_STR(routes_glob, id, route);
+}
+
+char *make_route_id(char *path, fhttp_method method)
+{
+  size_t buf_sz = snprintf(NULL, 0, "%s-%d", path, method) + 1;
+  char *buf = malloc(sizeof(char) * buf_sz);
+  snprintf(buf, buf_sz, "%s-%d", path, method);
+  return buf;
+}
+
+/**
+ * RESPONSE HANDLERS
+ */
+
+void send_http_response(uv_handle_t *handler, char *head, size_t head_sz, char *body, size_t body_sz)
+{
+  /**
+   * Some http parsers stop parsing when encounter a null terminator
+   * i decrement buf sizes to remove them.
+   * I think removing null terminator is not a big deal because the http protocol
+   * itself doesn't rely on them to check the end of buffers
+   */
+  head_sz--;
+  body_sz--;
+
+  uv_buf_t *write_bufs = (uv_buf_t *)malloc(sizeof(uv_buf_t) * 2);
+  write_bufs[0] = uv_buf_init(head, head_sz);
+  write_bufs[1] = uv_buf_init(body, body_sz);
+
+  uv_write_t *write_req = (uv_write_t *)malloc(sizeof(uv_write_t));
+  uv_write(write_req, (uv_stream_t *)handler, write_bufs, 2, on_write);
+}
+
+void send_html_response(uv_handle_t *handler, fhttp_status status, char *title, char *message)
+{
+  size_t body_buf_sz = snprintf(NULL, 0, HTML_TEMPLATE, title, message) + 1;
+  char body_buf[body_buf_sz];
+  snprintf(body_buf, body_buf_sz, HTML_TEMPLATE, title, message);
+
+  size_t head_buf_sz = snprintf(NULL, 0, HTTP_RESPONSE_HEADER_TEMPLATE, status, FHTTP_STATUS_STR(status), CONTENT_TYPE_HTML, body_buf_sz) + 1;
+  char head_buf[head_buf_sz];
+  snprintf(head_buf, head_buf_sz, HTTP_RESPONSE_HEADER_TEMPLATE, status, FHTTP_STATUS_STR(status), CONTENT_TYPE_HTML, body_buf_sz);
+
+  send_http_response(handler, head_buf, head_buf_sz, body_buf, body_buf_sz);
+}
+
+void send_404_response(frequest_t *request)
+{
+  char *title = "Not found";
+  char *message = "Cannot GET /hello";
+  fhttp_status status = FHTTP_STATUS_NOT_FOUND;
+  send_html_response(request->handler, status, title, message);
+}
+
+void send_bad_req_response(frequest_t *request)
+{
+  char *title = "Bad request";
+  char *message = "Bad request";
+  fhttp_status status = FHTTP_STATUS_BAD_REQ;
+  send_html_response(request->handler, status, title, message);
+}
+
+void send_json_response(fresponse_t *res, char *pload, size_t pload_len)
+{
+  size_t http_head_len = snprintf(NULL, 0, HTTP_RESPONSE_HEADER_TEMPLATE, res->status, FHTTP_STATUS_STR(res->status), CONTENT_TYPE_JSON, pload_len) + 1;
+  char http_head[http_head_len];
+  snprintf(http_head, http_head_len, HTTP_RESPONSE_HEADER_TEMPLATE, res->status, FHTTP_STATUS_STR(res->status), CONTENT_TYPE_JSON, pload_len);
+
+  send_http_response(res->handler, http_head, http_head_len, pload, pload_len);
 }
