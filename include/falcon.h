@@ -30,6 +30,7 @@ typedef struct
 {
   uv_handle_t *handler;
   struct fApp *app;
+  fhttp_status status;
 } fresponse_t;
 
 typedef void (*froute_handler_t)(frequest_t *, fresponse_t *);
