@@ -398,7 +398,9 @@ void send_html_response(uv_handle_t *handler, fhttp_status status, char *title, 
 void send_404_response(frequest_t *request)
 {
   char *title = "Not found";
-  char *message = "Cannot GET /hello";
+  size_t message_len = snprintf(NULL, 0, "Cannot %s %s", FHTTP_METHOD_STR(request->method), request->path) + 1;
+  char message[message_len];
+  snprintf(message, message_len, "Cannot %s %s", FHTTP_METHOD_STR(request->method), request->path);
   fhttp_status status = FHTTP_STATUS_NOT_FOUND;
   send_html_response(request->handler, status, title, message);
 }
