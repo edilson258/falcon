@@ -12,6 +12,8 @@
 
 #include <falcon.h>
 
+const unsigned SERVER_BACKLOG = 128;
+
 char CONTENT_TYPE_PLAIN[] = "text/plain";
 char CONTENT_TYPE_HTML[] = "text/html";
 char CONTENT_TYPE_JSON[] = "application/json";
@@ -146,7 +148,7 @@ int flisten(falcon_t *app, char *host, unsigned int port, fon_listen_t cb)
     return -1;
   }
 
-  result = uv_listen((uv_stream_t *)&server_sock_glob, 1024, on_connection);
+  result = uv_listen((uv_stream_t *)&server_sock_glob, SERVER_BACKLOG, on_connection);
   if (result)
   {
     fprintf(stderr, "Listen failed, %s\n", uv_strerror(result));
