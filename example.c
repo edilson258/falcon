@@ -31,7 +31,7 @@ int main(void)
   falcon_t app;
   fget(&app, "/users", users_find);
   fpost(&app, "/users", users_create, &user_schema);
-  flisten(&app, "127.0.0.1", 8080, on_listen);
+  flisten(&app, "0.0.0.0", 8080, on_listen);
 }
 
 void on_listen()
@@ -50,7 +50,7 @@ void users_find(frequest_t *req, fresponse_t *res)
   jjson_array arr;
 
   jjson_init(&json);
-  jjson_array_init(&arr);
+  jjson_init_array(&arr);
 
   for (int i = 0; i < users_count; ++i)
   {
@@ -83,7 +83,6 @@ void users_find(frequest_t *req, fresponse_t *res)
   };
 
   jjson_add(&json, kv);
-
   fres_json(res, &json);
 }
 
@@ -94,6 +93,6 @@ void users_create(frequest_t *req, fresponse_t *res)
   JJSON_GET_STRING(json, "email", email);
   JJSON_GET_STRING(json, "password", password);
   add_user(email, password);
-
+  res->status = FHTTP_STATUS_CREATED;
   fres_ok(res);
 }

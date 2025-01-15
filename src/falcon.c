@@ -64,6 +64,7 @@ char HTML_TEMPLATE[] = "<!DOCTYPE html>\n"
 
 #define FHTTP_STATUS_STR(status)                        \
   ((status) == FHTTP_STATUS_OK          ? "OK"          \
+   : (status) == FHTTP_STATUS_CREATED   ? "Created"     \
    : (status) == FHTTP_STATUS_BAD_REQ   ? "Bad request" \
    : (status) == FHTTP_STATUS_NOT_FOUND ? "Not found"   \
                                         : "Unkown HTTP status code")
@@ -122,12 +123,11 @@ void fpost(falcon_t *app, char *path, froute_handler_t handler, fschema_t *schem
   create_route(app, path, handler, FHTTP_POST, schema);
 }
 
-void fres_ok(fresponse_t *response)
+void fres_ok(fresponse_t *res)
 {
   char *title = "OK";
   char *message = "OK";
-  fhttp_status status = FHTTP_STATUS_OK;
-  send_html_response(response->handler, status, title, message);
+  send_html_response(res->handler, res->status, title, message);
 }
 
 void fres_json(fresponse_t *res, jjson_t *json)
@@ -136,6 +136,7 @@ void fres_json(fresponse_t *res, jjson_t *json)
   enum jjson_error err = jjson_stringify(json, 2, &body);
   assert(err == JJE_OK);
   size_t body_len = strlen(body);
+  printf("%d\n", res->status);
   send_json_response(res, body, body_len);
 }
 
@@ -372,29 +373,6 @@ char *make_route_id(char *path, fhttp_method method)
  * RESPONSE HANDLERS
  */
 
-void send_http_response(uv_handle_t *handler, fhttp_status status, char *cont_type, char *body, size_t body_len)
-{
-  size_t head_len = snprintf(NULL, 0, HTTP_RESPONSE_HEADER_TEMPLATE, status, FHTTP_STATUS_STR(status), cont_type, body_len) + 1;
-  char head[head_len];
-  snprintf(head, head_len, HTTP_RESPONSE_HEADER_TEMPLATE, status, FHTTP_STATUS_STR(status), cont_type, body_len);
-
-  uv_buf_t *write_bufs = (uv_buf_t *)malloc(sizeof(uv_buf_t) * 2);
-  write_bufs[0] = uv_buf_init(head, head_len - 1); // -1 to remove \0, so it does get parsed along w/ the body
-  write_bufs[1] = uv_buf_init(body, body_len);
-
-  uv_write_t *write_req = (uv_write_t *)malloc(sizeof(uv_write_t));
-  uv_write(write_req, (uv_stream_t *)handler, write_bufs, 2, on_write);
-}
-
-void send_html_response(uv_handle_t *handler, fhttp_status status, char *title, char *message)
-{
-  size_t body_buf_sz = snprintf(NULL, 0, HTML_TEMPLATE, title, message) + 1;
-  char body_buf[body_buf_sz];
-  snprintf(body_buf, body_buf_sz, HTML_TEMPLATE, title, message);
-
-  send_http_response(handler, status, CONTENT_TYPE_HTML, body_buf, body_buf_sz);
-}
-
 void send_404_response(frequest_t *request)
 {
   char *title = "Not found";
@@ -413,7 +391,29 @@ void send_bad_req_response(frequest_t *request)
   send_html_response(request->handler, status, title, message);
 }
 
+void send_html_response(uv_handle_t *handler, fhttp_status status, char *title, char *message)
+{
+  size_t body_buf_sz = snprintf(NULL, 0, HTML_TEMPLATE, title, message) + 1;
+  char body_buf[body_buf_sz];
+  snprintf(body_buf, body_buf_sz, HTML_TEMPLATE, title, message);
+  send_http_response(handler, status, CONTENT_TYPE_HTML, body_buf, body_buf_sz);
+}
+
 void send_json_response(fresponse_t *res, char *pload, size_t pload_len)
 {
   send_http_response(res->handler, res->status, CONTENT_TYPE_JSON, pload, pload_len);
+}
+
+void send_http_response(uv_handle_t *handler, fhttp_status status, char *cont_type, char *body, size_t body_len)
+{
+  size_t head_len = snprintf(NULL, 0, HTTP_RESPONSE_HEADER_TEMPLATE, status, FHTTP_STATUS_STR(status), cont_type, body_len) + 1;
+  char head[head_len];
+  snprintf(head, head_len, HTTP_RESPONSE_HEADER_TEMPLATE, status, FHTTP_STATUS_STR(status), cont_type, body_len);
+
+  uv_buf_t *write_bufs = (uv_buf_t *)malloc(sizeof(uv_buf_t) * 2);
+  write_bufs[0] = uv_buf_init(head, head_len - 1); // -1 to remove \0, so it does get parsed along w/ the body
+  write_bufs[1] = uv_buf_init(body, body_len);
+
+  uv_write_t *write_req = (uv_write_t *)malloc(sizeof(uv_write_t));
+  uv_write(write_req, (uv_stream_t *)handler, write_bufs, 2, on_write);
 }

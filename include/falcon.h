@@ -14,6 +14,7 @@ typedef enum
 typedef enum
 {
   FHTTP_STATUS_OK = 200,
+  FHTTP_STATUS_CREATED = 201,
   FHTTP_STATUS_BAD_REQ = 400,
   FHTTP_STATUS_NOT_FOUND = 404,
 } fhttp_status;
