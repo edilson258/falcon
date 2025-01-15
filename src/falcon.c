@@ -74,6 +74,9 @@ uv_tcp_t server_sock_glob;
 struct sockaddr_in server_addr_glob;
 fRoute *routes_glob = NULL;
 
+llhttp_t parser;
+llhttp_settings_t settings;
+
 // uv IO callbacks
 void on_write(uv_write_t *req, int status);
 void on_connection(uv_stream_t *server, int status);
@@ -82,7 +85,7 @@ void on_read_request(uv_stream_t *client, long nread, const uv_buf_t *buf);
 void on_close_connection(uv_handle_t *client);
 
 // llhttp parser
-void on_parse_request(char *raw_buffer, size_t buffer_size, frequest_t *request);
+void parse_request(char *raw_buffer, size_t buffer_size, frequest_t *request);
 int on_url(llhttp_t *p, const char *at, size_t len);
 int on_method(llhttp_t *p, const char *at, size_t len);
 int on_body(llhttp_t *p, const char *at, size_t len);
@@ -91,7 +94,7 @@ int on_body(llhttp_t *p, const char *at, size_t len);
  * INTERNAL API
  */
 int init_server(char *host, unsigned port);
-void on_match_request_handler(frequest_t *request);
+void match_request_handler(frequest_t *request);
 char *make_route_id(char *path, fhttp_method method);
 void create_route(falcon_t *app, char *path, froute_handler_t handler, fhttp_method method, fschema_t *schema);
 
@@ -171,6 +174,14 @@ int init_server(char *host, unsigned port)
   uv_tcp_init(main_loop_glob, &server_sock_glob);
   // TODO: validate host and port
   uv_ip4_addr(host, port, &server_addr_glob);
+
+  // init llhttp HTTP parser
+  llhttp_settings_init(&settings);
+  settings.on_url = on_url;
+  settings.on_method = on_method;
+  settings.on_body = on_body;
+  llhttp_init(&parser, HTTP_REQUEST, &settings);
+
   return 0;
 }
 
@@ -216,7 +227,7 @@ void on_read_request(uv_stream_t *client, long nread, const uv_buf_t *buf)
   {
     frequest_t *req = (frequest_t *)malloc(sizeof(frequest_t));
     req->handler = (uv_handle_t *)client;
-    on_parse_request(buf->base, nread, req);
+    parse_request(buf->base, nread, req);
   }
   else
   {
@@ -228,29 +239,16 @@ void on_read_request(uv_stream_t *client, long nread, const uv_buf_t *buf)
  * Parse raw buffer populating the request instance with relevant data
  *
  */
-void on_parse_request(char *raw_buf, size_t buf_sz, frequest_t *request)
+void parse_request(char *raw_buf, size_t buf_sz, frequest_t *request)
 {
-  // TODO: reuse same parser
-  llhttp_t parser;
-  llhttp_settings_t settings;
-  llhttp_settings_init(&settings);
-
-  settings.on_url = on_url;
-  settings.on_method = on_method;
-  settings.on_body = on_body;
-
-  llhttp_init(&parser, HTTP_REQUEST, &settings);
   parser.data = request;
-
   enum llhttp_errno parse_err = llhttp_execute(&parser, raw_buf, buf_sz);
-
+  llhttp_reset(&parser);
   // At this point the request has been parsed and the raw buffer is no longer needed
   free(raw_buf);
-
   if (parse_err != HPE_OK)
     return send_bad_req_response(request);
-
-  on_match_request_handler(request);
+  match_request_handler(request);
 }
 
 int on_method(llhttp_t *p, const char *at, size_t len)
@@ -290,7 +288,7 @@ int on_url(llhttp_t *p, const char *at, size_t len)
 /**
  * Match an already parsed request to a user defined route to be handled
  */
-void on_match_request_handler(frequest_t *request)
+void match_request_handler(frequest_t *request)
 {
   fRoute *match_route;
   char *id = make_route_id(request->path, request->method);
@@ -381,8 +379,8 @@ void send_http_response(uv_handle_t *handler, fhttp_status status, char *cont_ty
   snprintf(head, head_len, HTTP_RESPONSE_HEADER_TEMPLATE, status, FHTTP_STATUS_STR(status), cont_type, body_len);
 
   uv_buf_t *write_bufs = (uv_buf_t *)malloc(sizeof(uv_buf_t) * 2);
-  write_bufs[0] = uv_buf_init(head, head_len - 1);
-  write_bufs[1] = uv_buf_init(body, body_len - 1);
+  write_bufs[0] = uv_buf_init(head, head_len - 1); // -1 to remove \0, so it does get parsed along w/ the body
+  write_bufs[1] = uv_buf_init(body, body_len);
 
   uv_write_t *write_req = (uv_write_t *)malloc(sizeof(uv_write_t));
   uv_write(write_req, (uv_stream_t *)handler, write_bufs, 2, on_write);
