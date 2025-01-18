@@ -68,6 +68,7 @@ typedef void (*fon_listen_t)();
 void fget(falcon_t *app, char *path, froute_handler_t handler);
 void fpost(falcon_t *app, char *path, froute_handler_t handler, fschema_t *schema);
 void fres_ok(fresponse_t *res);
+void fres_set_status(fresponse_t *res, fhttp_status status);
 void fres_json(fresponse_t *res, jjson_t *json);
 int flisten(falcon_t *app, char *host, unsigned int port, fon_listen_t cb);
 

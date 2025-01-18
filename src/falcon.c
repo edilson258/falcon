@@ -140,6 +140,11 @@ void fres_json(fresponse_t *res, jjson_t *json)
   send_json_response(res, body, body_len);
 }
 
+void fres_set_status(fresponse_t *res, fhttp_status status)
+{
+  res->status = status;
+}
+
 int flisten(falcon_t *app, char *host, unsigned int port, fon_listen_t cb)
 {
   int result = 0;

@@ -89,10 +89,10 @@ void users_find(frequest_t *req, fresponse_t *res)
 void users_create(frequest_t *req, fresponse_t *res)
 {
   jjson_t json = *((jjson_t *)req->body);
-
   JJSON_GET_STRING(json, "email", email);
   JJSON_GET_STRING(json, "password", password);
   add_user(email, password);
-  res->status = FHTTP_STATUS_CREATED;
+
+  fres_set_status(res, FHTTP_STATUS_CREATED);
   fres_ok(res);
 }
