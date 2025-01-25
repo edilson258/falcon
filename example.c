@@ -1,4 +1,3 @@
-#include "jack.h"
 #include <falcon.h>
 #include <stdio.h>
 #include <stdlib.h>

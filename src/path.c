@@ -62,7 +62,7 @@ void lexer_skip_whitespace(lexer *l)
 {
   while (!lexer_is_eof(l) && isspace(lexer_peek_one(l)))
   {
-    lexer_peek_one(l);
+    lexer_advance_one(l);
   }
 }
 
