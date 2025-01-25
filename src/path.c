@@ -44,12 +44,12 @@ int lexer_is_eof(lexer *l)
   return l->cursor >= l->content_len;
 }
 
-char lexer_peek_one(lexer *l)
+char lexer_peek(lexer *l)
 {
   return lexer_is_eof(l) ? 0 : l->content[l->cursor];
 }
 
-void lexer_advance_one(lexer *l)
+void lexer_advance(lexer *l)
 {
   if (lexer_is_eof(l))
   {
@@ -60,9 +60,9 @@ void lexer_advance_one(lexer *l)
 
 void lexer_skip_whitespace(lexer *l)
 {
-  while (!lexer_is_eof(l) && isspace(lexer_peek_one(l)))
+  while (!lexer_is_eof(l) && isspace(lexer_peek(l)))
   {
-    lexer_advance_one(l);
+    lexer_advance(l);
   }
 }
 
@@ -76,9 +76,9 @@ int read_ident_predicate(int c)
 void lexer_read_while(lexer *l, lexer_read_predicate pred, char **out)
 {
   size_t start = l->cursor;
-  while (!lexer_is_eof(l) && pred(lexer_peek_one(l)))
+  while (!lexer_is_eof(l) && pred(lexer_peek(l)))
   {
-    lexer_advance_one(l);
+    lexer_advance(l);
   }
   size_t buf_len = l->cursor - start;
   *out = (char *)malloc(sizeof(char) * (buf_len + 1));
@@ -95,17 +95,17 @@ token lexer_next_token(lexer *l)
   {
     token.typ = TOKEN_EOF;
   }
-  else if (lexer_peek_one(l) == '/')
+  else if (lexer_peek(l) == '/')
   {
     token.typ = TOKEN_SLASH;
-    lexer_advance_one(l);
+    lexer_advance(l);
   }
-  else if (lexer_peek_one(l) == ':')
+  else if (lexer_peek(l) == ':')
   {
     token.typ = TOKEN_COLON;
-    lexer_advance_one(l);
+    lexer_advance(l);
   }
-  else if (isalpha(lexer_peek_one(l)))
+  else if (isalpha(lexer_peek(l)))
   {
     char *out;
     lexer_read_while(l, read_ident_predicate, &out);
