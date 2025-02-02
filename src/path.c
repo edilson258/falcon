@@ -1,150 +1,127 @@
 #include <assert.h>
 #include <ctype.h>
+#include <falcon/path.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "falcon/path.h"
-
-#define TODO(message)                                              \
-  fprintf(stderr, "TODO %s:%d %s\n", __FILE__, __LINE__, message); \
-  abort();
-
 typedef struct
 {
-  size_t cursor;
-  char *content;
+  const char *content;
   size_t content_len;
-} lexer;
+  size_t cursor;
+} parser_t;
 
-void lexer_init(lexer *l, char *content)
+parser_t *parser_new(const char *content)
 {
-  l->cursor = 0;
-  l->content = content;
-  l->content_len = strnlen(content, PATH_MAX_LEN);
+  parser_t *parser = malloc(sizeof(parser_t));
+  parser->content = content;
+  parser->content_len = strnlen(content, PATH_MAX_LEN);
+  parser->cursor = 0;
+  return parser;
 }
 
-typedef enum
+int parser_is_eof(parser_t *parser)
 {
-  TOKEN_EOF = 0,
-  TOKEN_SLASH = 1,
-  TOKEN_COLON = 2,
-  TOKEN_IDENT = 3,
-} token_t;
-
-typedef struct
-{
-  token_t typ;
-  char *lexeme;
-} token;
-
-int lexer_is_eof(lexer *l)
-{
-  return l->cursor >= l->content_len;
+  return parser->cursor >= parser->content_len;
 }
 
-char lexer_peek(lexer *l)
+#define PARSER_EOF '\0'
+
+char parser_peek(parser_t *parser)
 {
-  return lexer_is_eof(l) ? 0 : l->content[l->cursor];
+  return parser_is_eof(parser) ? PARSER_EOF : parser->content[parser->cursor];
 }
 
-void lexer_advance(lexer *l)
+void parser_advance(parser_t *parser)
 {
-  if (lexer_is_eof(l))
+  parser->cursor++;
+}
+
+char parser_advance_if(parser_t *parser, char c)
+{
+  if (parser_peek(parser) == c)
   {
-    return;
+    parser_advance(parser);
+    return 1;
   }
-  l->cursor++;
+  return 0;
 }
 
-void lexer_skip_whitespace(lexer *l)
+void parser_skip_whitespace(parser_t *parser)
 {
-  while (!lexer_is_eof(l) && isspace(lexer_peek(l)))
+  while (!parser_is_eof(parser) && isspace(parser_peek(parser)))
   {
-    lexer_advance(l);
+    parser_advance(parser);
   }
 }
 
-typedef int (*lexer_read_predicate)(int);
+typedef int (*parser_predicate)(int);
 
-int read_ident_predicate(int c)
+void parser_advance_while(parser_t *parser, parser_predicate p)
 {
-  return isalnum(c);
+  while (!parser_is_eof(parser) && p(parser_peek(parser)))
+  {
+    parser_advance(parser);
+  }
 }
 
-void lexer_read_while(lexer *l, lexer_read_predicate pred, char **out)
+int parse_parameter_frag(parser_t *parser, frag_t *frag)
 {
-  size_t start = l->cursor;
-  while (!lexer_is_eof(l) && pred(lexer_peek(l)))
-  {
-    lexer_advance(l);
-  }
-  size_t buf_len = l->cursor - start;
-  *out = (char *)malloc(sizeof(char) * (buf_len + 1));
-  strncpy(*out, l->content + start, buf_len);
-  (*out)[buf_len] = 0;
-}
-
-token lexer_next_token(lexer *l)
-{
-  lexer_skip_whitespace(l);
-
-  token token;
-  if (lexer_is_eof(l))
-  {
-    token.typ = TOKEN_EOF;
-  }
-  else if (lexer_peek(l) == '/')
-  {
-    token.typ = TOKEN_SLASH;
-    lexer_advance(l);
-  }
-  else if (lexer_peek(l) == ':')
-  {
-    token.typ = TOKEN_COLON;
-    lexer_advance(l);
-  }
-  else if (isalpha(lexer_peek(l)))
-  {
-    char *out;
-    lexer_read_while(l, read_ident_predicate, &out);
-    token.typ = TOKEN_IDENT;
-    token.lexeme = out;
-  }
-  else
-  {
-    assert(!"Invalid token");
-  }
-
-  return token;
-}
-
-int parse_path(char *raw, fpath_t *path)
-{
-  lexer l;
-  lexer_init(&l, raw);
-
-  token t = lexer_next_token(&l);
-  while (t.typ)
-  {
-    switch (t.typ)
-    {
-    case TOKEN_EOF:
-      printf("EOF\n");
-      break;
-    case TOKEN_COLON:
-      printf(":\n");
-      break;
-    case TOKEN_SLASH:
-      printf("/\n");
-      break;
-    case TOKEN_IDENT:
-      printf("%s\n", t.lexeme);
-      break;
-    }
-    t = lexer_next_token(&l);
-  }
-
   return 1;
+}
+
+frag_t fragment_new(int is_parameter)
+{
+  frag_t frag;
+  frag.is_parameter = is_parameter;
+  memset(frag.label, 0, sizeof(frag.label));
+  return frag;
+}
+
+fpath_t *parse_path(const char *content)
+{
+  fpath_t *path = malloc(sizeof(fpath_t));
+  path->nfrags = 0;
+
+  parser_t *parser = parser_new(content);
+
+  while (1)
+  {
+    parser_skip_whitespace(parser);
+
+    if (PARSER_EOF == parser_peek(parser))
+      break;
+
+    if ('/' == parser_peek(parser))
+    {
+      parser_advance(parser);
+    }
+
+    if (':' == parser_peek(parser))
+    {
+      parser_advance(parser);
+      frag_t frag = fragment_new(1);
+      size_t begin = parser->cursor;
+      parser_advance_while(parser, isalnum);
+      size_t ident_len = parser->cursor - begin;
+      assert(ident_len < FRAG_LABEL_LEN);
+      strncpy(frag.label, parser->content + begin, ident_len);
+      path->frags[path->nfrags++] = frag;
+    }
+
+    if (isalnum(parser_peek(parser)))
+    {
+      frag_t frag = fragment_new(0);
+      size_t begin = parser->cursor;
+      parser_advance_while(parser, isalnum);
+      size_t len = parser->cursor - begin;
+      assert(len < FRAG_LABEL_LEN);
+      strncpy(frag.label, parser->content + begin, len);
+      path->frags[path->nfrags++] = frag;
+    }
+  }
+
+  return path;
 }
