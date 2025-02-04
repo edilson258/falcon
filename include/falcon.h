@@ -72,4 +72,12 @@ void fres_set_status(fresponse_t *res, fhttp_status status);
 void fres_json(fresponse_t *res, jjson_t *json);
 int flisten(falcon_t *app, char *host, unsigned int port, fon_listen_t cb);
 
+typedef enum
+{
+  FERR_OK = 0,
+  FERR_TOO_MANY_FRAGS = 1,
+  FERR_INVALID_TOKEN = 2,
+  FERR_STRING_TOO_LONG = 3,
+} ferrno;
+
 #endif // __FALCON_HTTP__
