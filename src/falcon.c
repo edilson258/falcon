@@ -62,12 +62,12 @@ char HTML_TEMPLATE[] = "<!DOCTYPE html>\n"
    : (method) == FHTTP_POST ? "POST" \
                             : "Unkown HTTP method")
 
-#define FHTTP_STATUS_STR(status)                        \
-  ((status) == FHTTP_STATUS_OK          ? "OK"          \
-   : (status) == FHTTP_STATUS_CREATED   ? "Created"     \
-   : (status) == FHTTP_STATUS_BAD_REQ   ? "Bad request" \
-   : (status) == FHTTP_STATUS_NOT_FOUND ? "Not found"   \
-                                        : "Unkown HTTP status code")
+#define FHTTP_STATUS_STR(status)                   \
+  ((status) == FSTATUS_OK          ? "OK"          \
+   : (status) == FSTATUS_CREATED   ? "Created"     \
+   : (status) == FSTATUS_BAD_REQ   ? "Bad request" \
+   : (status) == FSTATUS_NOT_FOUND ? "Not found"   \
+                                   : "Unkown HTTP status code")
 
 // Globals
 uv_loop_t *main_loop_glob;
@@ -136,7 +136,6 @@ void fres_json(fresponse_t *res, jjson_t *json)
   enum jjson_error err = jjson_stringify(json, 2, &body);
   assert(err == JJE_OK);
   size_t body_len = strlen(body);
-  printf("%d\n", res->status);
   send_json_response(res, body, body_len);
 }
 
@@ -328,7 +327,7 @@ void match_request_handler(frequest_t *request)
   }
 
   fresponse_t *response = (fresponse_t *)malloc(sizeof(fresponse_t));
-  response->status = FHTTP_STATUS_OK;
+  response->status = FSTATUS_OK;
   response->handler = request->handler;
   match_route->handler(request, response);
 }
@@ -384,7 +383,7 @@ void send_404_response(frequest_t *request)
   size_t message_len = snprintf(NULL, 0, "Cannot %s %s", FHTTP_METHOD_STR(request->method), request->path) + 1;
   char message[message_len];
   snprintf(message, message_len, "Cannot %s %s", FHTTP_METHOD_STR(request->method), request->path);
-  fhttp_status status = FHTTP_STATUS_NOT_FOUND;
+  fhttp_status status = FSTATUS_NOT_FOUND;
   send_html_response(request->handler, status, title, message);
 }
 
@@ -392,7 +391,7 @@ void send_bad_req_response(frequest_t *request)
 {
   char *title = "Bad request";
   char *message = "Bad request";
-  fhttp_status status = FHTTP_STATUS_BAD_REQ;
+  fhttp_status status = FSTATUS_BAD_REQ;
   send_html_response(request->handler, status, title, message);
 }
 

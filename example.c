@@ -92,6 +92,6 @@ void users_create(frequest_t *req, fresponse_t *res)
   JJSON_GET_STRING(json, "password", password);
   add_user(email, password);
 
-  fres_set_status(res, FHTTP_STATUS_CREATED);
+  fres_set_status(res, FSTATUS_CREATED);
   fres_ok(res);
 }
