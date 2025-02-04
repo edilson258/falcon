@@ -1,11 +1,12 @@
-#ifndef __PATH__
-#define __PATH__
+#ifndef __FALCON_PATH__
+#define __FALCON_PATH__
 
+#include <falcon.h>
 #include <stddef.h>
 
-#define PATH_MAX_LEN 5120
-#define PATH_MAX_FRAGS 100
-#define FRAG_LABEL_LEN 255
+#define PATH_MAX_LEN (32 * 1024)
+#define FRAG_LABEL_LEN (5 * 1024)
+#define PATH_MAX_FRAGS 1000
 
 typedef struct
 {
@@ -19,6 +20,6 @@ typedef struct
   frag_t frags[PATH_MAX_FRAGS];
 } fpath_t;
 
-fpath_t *parse_path(const char *content);
+ferrno parse_path(const char *content, fpath_t *path);
 
-#endif // !__PATH__
+#endif // !__FALCON_PATH__
