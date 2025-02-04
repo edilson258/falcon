@@ -1,7 +1,8 @@
 #ifndef __FALCON_PATH__
 #define __FALCON_PATH__
 
-#include <falcon.h>
+#include <falcon/errn.h>
+
 #include <stddef.h>
 
 #define PATH_MAX_LEN (32 * 1024)
