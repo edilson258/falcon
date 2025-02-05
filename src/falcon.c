@@ -11,6 +11,7 @@
 #include <uv.h>
 
 #include <falcon.h>
+#include <falcon/router.h>
 
 const unsigned SERVER_BACKLOG = 128;
 
@@ -73,7 +74,8 @@ char HTML_TEMPLATE[] = "<!DOCTYPE html>\n"
 uv_loop_t *main_loop_glob;
 uv_tcp_t server_sock_glob;
 struct sockaddr_in server_addr_glob;
-fRoute *routes_glob = NULL;
+
+fc_router_t router_glob;
 
 llhttp_t parser;
 llhttp_settings_t settings;
@@ -97,7 +99,7 @@ int on_body(llhttp_t *p, const char *at, size_t len);
 int init_server(char *host, unsigned port);
 void match_request_handler(frequest_t *request);
 char *make_route_id(char *path, fhttp_method method);
-void create_route(falcon_t *app, char *path, froute_handler_t handler, fhttp_method method, fschema_t *schema);
+void create_route(falcon_t *app, char *path, froute_handler_t handler, fhttp_method method);
 
 /**
  * RESPONSE HANDLERS
@@ -113,14 +115,29 @@ void send_http_response(uv_handle_t *handler, fhttp_status status, char *cont_ty
  * EXTERANL API
  */
 
-void fget(falcon_t *app, char *path, froute_handler_t handler)
+fc_errno falcon_init(falcon_t *app)
 {
-  create_route(app, path, handler, FHTTP_GET, 0);
+  // init app main router
+  fc_router_init(&router_glob);
+
+  // init http parser
+  llhttp_settings_init(&settings);
+  settings.on_url = on_url;
+  settings.on_method = on_method;
+  settings.on_body = on_body;
+  llhttp_init(&parser, HTTP_REQUEST, &settings);
+
+  return FC_ERR_OK;
 }
 
-void fpost(falcon_t *app, char *path, froute_handler_t handler, fschema_t *schema)
+void fget(falcon_t *app, char *path, froute_handler_t handler)
 {
-  create_route(app, path, handler, FHTTP_POST, schema);
+  create_route(app, path, handler, FHTTP_GET);
+}
+
+void fpost(falcon_t *app, char *path, froute_handler_t handler)
+{
+  create_route(app, path, handler, FHTTP_POST);
 }
 
 void fres_ok(fresponse_t *res)
@@ -179,14 +196,6 @@ int init_server(char *host, unsigned port)
   uv_tcp_init(main_loop_glob, &server_sock_glob);
   // TODO: validate host and port
   uv_ip4_addr(host, port, &server_addr_glob);
-
-  // init llhttp HTTP parser
-  llhttp_settings_init(&settings);
-  settings.on_url = on_url;
-  settings.on_method = on_method;
-  settings.on_body = on_body;
-  llhttp_init(&parser, HTTP_REQUEST, &settings);
-
   return 0;
 }
 
@@ -295,41 +304,15 @@ int on_url(llhttp_t *p, const char *at, size_t len)
  */
 void match_request_handler(frequest_t *request)
 {
-  fRoute *match_route;
-  char *id = make_route_id(request->path, request->method);
-  HASH_FIND_STR(routes_glob, id, match_route);
-
-  if (!match_route)
+  froute_handler_t handler;
+  if (fc_router_match_req(&router_glob, request->method, request->path, &handler))
   {
-    return send_404_response(request);
-  }
+    fresponse_t *response = malloc(sizeof(fresponse_t));
+    response->status = FSTATUS_OK;
+    response->handler = request->handler;
 
-  if (match_route->schema)
-  {
-    jjson_t *json = (jjson_t *)malloc(sizeof(jjson_t));
-    jjson_init(json);
-
-    enum jjson_error err = jjson_parse(json, request->body);
-    if (JJE_OK != err)
-      return send_bad_req_response(request);
-
-    for (int i = 0; i < match_route->schema->nfields; ++i)
-    {
-      const ffield_t *field = &match_route->schema->fields[i];
-      jjson_value *match_val;
-      err = jjson_get(json, field->name, &match_val);
-      if (JJE_OK != err || match_val->type != field->type)
-        return send_bad_req_response(request);
-    }
-
-    free(request->body);
-    request->body = json;
-  }
-
-  fresponse_t *response = (fresponse_t *)malloc(sizeof(fresponse_t));
-  response->status = FSTATUS_OK;
-  response->handler = request->handler;
-  match_route->handler(request, response);
+    handler(request, response);
+  };
 }
 
 void on_write(uv_write_t *req, int status)
@@ -354,15 +337,9 @@ void on_close_connection(uv_handle_t *client)
   free(client);
 }
 
-void create_route(falcon_t *app, char *path, froute_handler_t handler, fhttp_method method, fschema_t *schema)
+void create_route(falcon_t *app, char *path, froute_handler_t handler, fhttp_method method)
 {
-  fRoute *route = (fRoute *)malloc(sizeof(fRoute));
-  route->id = make_route_id(path, method);
-  route->path = path;
-  route->method = method;
-  route->handler = handler;
-  route->schema = schema;
-  HASH_ADD_STR(routes_glob, id, route);
+  fc_router_add_route(&router_glob, method, path, handler);
 }
 
 char *make_route_id(char *path, fhttp_method method)

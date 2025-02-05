@@ -1,14 +1,18 @@
 #ifndef __FALCON_HTTP__
 #define __FALCON_HTTP__
 
+#include <falcon/errn.h>
+
 #include <jack.h>
-#include <uthash.h>
 #include <uv.h>
 
 typedef enum
 {
-  FHTTP_GET = 1,
-  FHTTP_POST = 2,
+  FHTTP_GET,
+  FHTTP_POST,
+
+  /* Must be the last one */
+  __FHTTP_METHODS_COUNT__
 } fhttp_method;
 
 typedef enum
@@ -38,35 +42,14 @@ typedef void (*froute_handler_t)(frequest_t *, fresponse_t *);
 
 typedef struct
 {
-  char *name;
-  jjson_type type;
-} ffield_t;
-
-typedef struct
-{
-  unsigned nfields;
-  ffield_t fields[];
-} fschema_t;
-
-typedef struct fRoute
-{
-  char *id;
-  char *path;
-  fschema_t *schema;
-  fhttp_method method;
-  froute_handler_t handler;
-
-  UT_hash_handle hh; // make struct hashable
-} fRoute;
-
-typedef struct
-{
 } falcon_t;
 
 typedef void (*fon_listen_t)();
 
+fc_errno falcon_init(falcon_t *app);
+
 void fget(falcon_t *app, char *path, froute_handler_t handler);
-void fpost(falcon_t *app, char *path, froute_handler_t handler, fschema_t *schema);
+void fpost(falcon_t *app, char *path, froute_handler_t handler);
 void fres_ok(fresponse_t *res);
 void fres_set_status(fresponse_t *res, fhttp_status status);
 void fres_json(fresponse_t *res, jjson_t *json);

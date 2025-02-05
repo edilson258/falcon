@@ -8,13 +8,6 @@ struct User
   char *password;
 };
 
-fschema_t user_schema = {
-    .nfields = 2,
-    .fields = {
-        {.name = "email", .type = JSON_STRING},
-        {.name = "password", .type = JSON_STRING},
-    }};
-
 unsigned users_count = 0;
 struct User users[1024];
 
@@ -28,9 +21,12 @@ void users_create(frequest_t *req, fresponse_t *res);
 int main(void)
 {
   falcon_t app;
+  falcon_init(&app);
+
   fget(&app, "/users", users_find);
-  fpost(&app, "/users", users_create, &user_schema);
-  flisten(&app, "0.0.0.0", 8080, on_listen);
+  fpost(&app, "/users", users_create);
+
+  return flisten(&app, "0.0.0.0", 8080, on_listen);
 }
 
 void on_listen()
