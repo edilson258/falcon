@@ -17,7 +17,7 @@ typedef struct fc_route_frag
   fc_route_frag_t type;
   struct fc_route_frag *next;
   struct fc_route_frag *children;
-  froute_handler_t handlers[__FHTTP_METHODS_COUNT__];
+  fc_route_handler_t handlers[__FC_HTTP_METHODS_COUNT__];
 } fc_route_frag;
 
 typedef struct
@@ -27,7 +27,7 @@ typedef struct
 
 fc_errno fc_router_init(fc_router_t *router);
 
-bool fc_router_add_route(fc_router_t *router, fhttp_method method, char *path, froute_handler_t handler);
-bool fc_router_match_req(fc_router_t *router, fhttp_method method, char *path, froute_handler_t *handler);
+bool fc_router_add_route(fc_router_t *router, fc_http_method method, char *path, fc_route_handler_t handler);
+bool fc_router_match_req(fc_router_t *router, fc_http_method method, char *path, fc_route_handler_t *handler);
 
 #endif // !__FALCON_ROUTER__

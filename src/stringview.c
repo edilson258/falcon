@@ -19,6 +19,9 @@ fc_errno fc_stringview_new(char *ptr, size_t len, fc_stringview_t *sv)
 
 fc_errno fc_stringview_get(char **out, fc_stringview_t *sv)
 {
+  if (!fc_is_string_valid(sv->ptr))
+    return FC_ERR_INVALID_STRING;
+
   (*out) = strndup(sv->ptr, sv->len);
   return FC_ERR_OK;
 }

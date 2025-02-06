@@ -2,57 +2,58 @@
 #define __FALCON_HTTP__
 
 #include <falcon/errn.h>
+#include <falcon/stringview.h>
 
 #include <jack.h>
 #include <uv.h>
 
 typedef enum
 {
-  FHTTP_GET,
-  FHTTP_POST,
+  FC_HTTP_GET,
+  FC_HTTP_POST,
 
   /* Must be the last one */
-  __FHTTP_METHODS_COUNT__
-} fhttp_method;
+  __FC_HTTP_METHODS_COUNT__
+} fc_http_method;
 
 typedef enum
 {
-  FSTATUS_OK = 200,
-  FSTATUS_CREATED = 201,
-  FSTATUS_BAD_REQ = 400,
-  FSTATUS_NOT_FOUND = 404,
-} fhttp_status;
+  FC_STATUS_OK = 200,
+  FC_STATUS_CREATED = 201,
+  FC_STATUS_BAD_REQ = 400,
+  FC_STATUS_NOT_FOUND = 404,
+} fc_http_status;
 
 typedef struct
 {
-  char *path;
-  void *body;
-  fhttp_method method;
+  fc_stringview_t buf;
+  fc_stringview_t path;
+  fc_stringview_t body_buf;
+  fc_http_method method;
   uv_handle_t *handler;
-} frequest_t;
+} fc_request_t;
 
 typedef struct
 {
   uv_handle_t *handler;
-  struct fApp *app;
-  fhttp_status status;
-} fresponse_t;
+  fc_http_status status;
+} fc_response_t;
 
-typedef void (*froute_handler_t)(frequest_t *, fresponse_t *);
+typedef void (*fc_route_handler_t)(fc_request_t *, fc_response_t *);
 
 typedef struct
 {
-} falcon_t;
+} fc_t;
 
 typedef void (*fon_listen_t)();
 
-fc_errno falcon_init(falcon_t *app);
+fc_errno fc_init(fc_t *app);
 
-void fget(falcon_t *app, char *path, froute_handler_t handler);
-void fpost(falcon_t *app, char *path, froute_handler_t handler);
-void fres_ok(fresponse_t *res);
-void fres_set_status(fresponse_t *res, fhttp_status status);
-void fres_json(fresponse_t *res, jjson_t *json);
-int flisten(falcon_t *app, char *host, unsigned int port, fon_listen_t cb);
+void fc_get(fc_t *app, char *path, fc_route_handler_t handler);
+void fc_post(fc_t *app, char *path, fc_route_handler_t handler);
+void fc_res_ok(fc_response_t *res);
+void fc_res_set_status(fc_response_t *res, fc_http_status status);
+void fc_res_json(fc_response_t *res, jjson_t *json);
+int fc_listen(fc_t *app, char *host, unsigned int port, fon_listen_t cb);
 
 #endif // __FALCON_HTTP__

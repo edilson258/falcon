@@ -15,18 +15,18 @@ void on_listen();
 void add_user(char *username, char *password);
 
 // Endpoints
-void users_find(frequest_t *req, fresponse_t *res);
-void users_create(frequest_t *req, fresponse_t *res);
+void users_find(fc_request_t *req, fc_response_t *res);
+void users_create(fc_request_t *req, fc_response_t *res);
 
 int main(void)
 {
-  falcon_t app;
-  falcon_init(&app);
+  fc_t app;
+  fc_init(&app);
 
-  fget(&app, "/users", users_find);
-  fpost(&app, "/users", users_create);
+  fc_get(&app, "/users", users_find);
+  fc_post(&app, "/users", users_create);
 
-  return flisten(&app, "0.0.0.0", 8080, on_listen);
+  return fc_listen(&app, "0.0.0.0", 8080, on_listen);
 }
 
 void on_listen()
@@ -39,7 +39,7 @@ void add_user(char *email, char *password)
   users[users_count++] = (struct User){.email = email, .password = password};
 }
 
-void users_find(frequest_t *req, fresponse_t *res)
+void users_find(fc_request_t *req, fc_response_t *res)
 {
   jjson_t json;
   jjson_array arr;
@@ -78,16 +78,11 @@ void users_find(frequest_t *req, fresponse_t *res)
   };
 
   jjson_add(&json, kv);
-  fres_json(res, &json);
+  fc_res_json(res, &json);
 }
 
-void users_create(frequest_t *req, fresponse_t *res)
+void users_create(fc_request_t *req, fc_response_t *res)
 {
-  jjson_t json = *((jjson_t *)req->body);
-  JJSON_GET_STRING(json, "email", email);
-  JJSON_GET_STRING(json, "password", password);
-  add_user(email, password);
-
-  fres_set_status(res, FSTATUS_CREATED);
-  fres_ok(res);
+  fc_res_set_status(res, FC_STATUS_CREATED);
+  fc_res_ok(res);
 }

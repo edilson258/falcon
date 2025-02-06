@@ -119,11 +119,9 @@ static char **path_split(char *path, size_t *count)
     token = strtok(NULL, "/");
   }
 
-  free(path);
   return segments;
 
 error:
-  free(path);
   for (size_t i = 0; i < *count; i++)
     free(segments[i]);
   free(segments);
@@ -142,9 +140,9 @@ static bool route_conflict_check(fc_route_frag *existing, fc_route_frag *new_fra
   return false;
 }
 
-bool fc_router_add_route(fc_router_t *router, fhttp_method method, char *path, froute_handler_t handler)
+bool fc_router_add_route(fc_router_t *router, fc_http_method method, char *path, fc_route_handler_t handler)
 {
-  if (!router || method >= __FHTTP_METHODS_COUNT__ || !path || !handler)
+  if (!router || method >= __FC_HTTP_METHODS_COUNT__ || !path || !handler)
     return false;
 
   size_t seg_count = 0;
@@ -217,9 +215,9 @@ error:
   return false;
 }
 
-bool fc_router_match_req(fc_router_t *router, fhttp_method method, char *path, froute_handler_t *handler)
+bool fc_router_match_req(fc_router_t *router, fc_http_method method, char *path, fc_route_handler_t *handler)
 {
-  if (!router || method >= __FHTTP_METHODS_COUNT__ || !path || !handler)
+  if (!router || method >= __FC_HTTP_METHODS_COUNT__ || !path || !handler)
     return false;
 
   size_t seg_count = 0;

@@ -1,6 +1,10 @@
-#include <falcon.h>
-#include <falcon/router.h>
-#include <falcon/stringview.h>
+#include <assert.h>
+#include <stdarg.h>
+#include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <termios.h>
 
 #define JACK_IMPLEMENTATION
 #include <jack.h>
@@ -8,12 +12,10 @@
 #include <llhttp.h>
 #include <uv.h>
 
-#include <assert.h>
-#include <stdarg.h>
-#include <stddef.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <falcon.h>
+#include <falcon/errn.h>
+#include <falcon/router.h>
+#include <falcon/stringview.h>
 
 const unsigned SERVER_BACKLOG = 128;
 
@@ -60,17 +62,17 @@ char HTML_TEMPLATE[] = "<!DOCTYPE html>\n"
                        "</body>\n"
                        "</html>\n";
 
-#define FHTTP_METHOD_STR(method)     \
-  ((method) == FHTTP_GET    ? "GET"  \
-   : (method) == FHTTP_POST ? "POST" \
-                            : "Unkown HTTP method")
+#define FHTTP_METHOD_STR(method)       \
+  ((method) == FC_HTTP_GET    ? "GET"  \
+   : (method) == FC_HTTP_POST ? "POST" \
+                              : "Unkown HTTP method")
 
-#define FHTTP_STATUS_STR(status)                   \
-  ((status) == FSTATUS_OK          ? "OK"          \
-   : (status) == FSTATUS_CREATED   ? "Created"     \
-   : (status) == FSTATUS_BAD_REQ   ? "Bad request" \
-   : (status) == FSTATUS_NOT_FOUND ? "Not found"   \
-                                   : "Unkown HTTP status code")
+#define FHTTP_STATUS_STR(status)                     \
+  ((status) == FC_STATUS_OK          ? "OK"          \
+   : (status) == FC_STATUS_CREATED   ? "Created"     \
+   : (status) == FC_STATUS_BAD_REQ   ? "Bad request" \
+   : (status) == FC_STATUS_NOT_FOUND ? "Not found"   \
+                                     : "Unkown HTTP status code")
 
 // Globals
 uv_loop_t *main_loop_glob;
@@ -90,7 +92,7 @@ void on_read_request(uv_stream_t *client, long nread, const uv_buf_t *buf);
 void on_close_connection(uv_handle_t *client);
 
 // llhttp parser
-void parse_request(char *raw_buffer, size_t buffer_size, frequest_t *request);
+void parse_request(char *raw_buffer, size_t buffer_size, fc_request_t *request);
 int on_url(llhttp_t *p, const char *at, size_t len);
 int on_method(llhttp_t *p, const char *at, size_t len);
 int on_body(llhttp_t *p, const char *at, size_t len);
@@ -99,24 +101,24 @@ int on_body(llhttp_t *p, const char *at, size_t len);
  * INTERNAL API
  */
 int init_server(char *host, unsigned port);
-void match_request_handler(frequest_t *request);
-void create_route(falcon_t *app, char *path, froute_handler_t handler, fhttp_method method);
+void match_request_handler(fc_request_t *request);
+void create_route(fc_t *app, char *path, fc_route_handler_t handler, fc_http_method method);
 
 /**
  * RESPONSE HANDLERS
  */
 
-void send_404_response(frequest_t *request);
-void send_bad_req_response(frequest_t *request);
-void send_json_response(fresponse_t *res, char *pload, size_t pload_len);
-void send_html_response(uv_handle_t *handler, fhttp_status status, char *title, char *message);
-void send_http_response(uv_handle_t *handler, fhttp_status status, char *cont_type, char *body, size_t body_len);
+void send_404_response(fc_request_t *request);
+void send_bad_req_response(fc_request_t *request);
+void send_json_response(fc_response_t *res, char *pload, size_t pload_len);
+void send_html_response(uv_handle_t *handler, fc_http_status status, char *title, char *message);
+void send_http_response(uv_handle_t *handler, fc_http_status status, char *cont_type, char *body, size_t body_len);
 
 /**
  * EXTERANL API
  */
 
-fc_errno falcon_init(falcon_t *app)
+fc_errno fc_init(fc_t *app)
 {
   // init app main router
   fc_router_init(&router_glob);
@@ -131,24 +133,24 @@ fc_errno falcon_init(falcon_t *app)
   return FC_ERR_OK;
 }
 
-void fget(falcon_t *app, char *path, froute_handler_t handler)
+void fc_get(fc_t *app, char *path, fc_route_handler_t handler)
 {
-  create_route(app, path, handler, FHTTP_GET);
+  create_route(app, path, handler, FC_HTTP_GET);
 }
 
-void fpost(falcon_t *app, char *path, froute_handler_t handler)
+void fc_post(fc_t *app, char *path, fc_route_handler_t handler)
 {
-  create_route(app, path, handler, FHTTP_POST);
+  create_route(app, path, handler, FC_HTTP_POST);
 }
 
-void fres_ok(fresponse_t *res)
+void fc_res_ok(fc_response_t *res)
 {
   char *title = "OK";
   char *message = "OK";
   send_html_response(res->handler, res->status, title, message);
 }
 
-void fres_json(fresponse_t *res, jjson_t *json)
+void fc_res_json(fc_response_t *res, jjson_t *json)
 {
   char *body;
   enum jjson_error err = jjson_stringify(json, 2, &body);
@@ -157,12 +159,12 @@ void fres_json(fresponse_t *res, jjson_t *json)
   send_json_response(res, body, body_len);
 }
 
-void fres_set_status(fresponse_t *res, fhttp_status status)
+void fc_res_set_status(fc_response_t *res, fc_http_status status)
 {
   res->status = status;
 }
 
-int flisten(falcon_t *app, char *host, unsigned int port, fon_listen_t cb)
+int fc_listen(fc_t *app, char *host, unsigned int port, fon_listen_t cb)
 {
   int result = 0;
   init_server(host, port);
@@ -238,10 +240,12 @@ void on_alloc_req_buf(uv_handle_t *handle, size_t size, uv_buf_t *buf)
  */
 void on_read_request(uv_stream_t *client, long nread, const uv_buf_t *buf)
 {
+  // TODO: stop reading
   if (nread > 0)
   {
-    frequest_t *req = (frequest_t *)malloc(sizeof(frequest_t));
+    fc_request_t *req = (fc_request_t *)malloc(sizeof(fc_request_t));
     req->handler = (uv_handle_t *)client;
+    req->buf = (fc_stringview_t){.ptr = buf->base, .len = nread};
     parse_request(buf->base, nread, req);
   }
   else
@@ -254,13 +258,11 @@ void on_read_request(uv_stream_t *client, long nread, const uv_buf_t *buf)
  * Parse raw buffer populating the request instance with relevant data
  *
  */
-void parse_request(char *raw_buf, size_t buf_sz, frequest_t *request)
+void parse_request(char *raw_buf, size_t buf_sz, fc_request_t *request)
 {
   parser.data = request;
   enum llhttp_errno parse_err = llhttp_execute(&parser, raw_buf, buf_sz);
   llhttp_reset(&parser);
-  // At this point the request has been parsed and the raw buffer is no longer needed
-  free(raw_buf);
   if (parse_err != HPE_OK)
     return send_bad_req_response(request);
   match_request_handler(request);
@@ -268,52 +270,54 @@ void parse_request(char *raw_buf, size_t buf_sz, frequest_t *request)
 
 int on_method(llhttp_t *p, const char *at, size_t len)
 {
-  frequest_t *req = (frequest_t *)p->data;
+  fc_request_t *req = (fc_request_t *)p->data;
   if (0 == strncmp("GET", at, len))
-  {
-    req->method = FHTTP_GET;
-    return HPE_OK;
-  }
+    req->method = FC_HTTP_GET;
   else if (0 == strncmp("POST", at, len))
-  {
-    req->method = FHTTP_POST;
-    return HPE_OK;
-  }
-  return HPE_INVALID_METHOD;
+    req->method = FC_HTTP_POST;
+  else
+    return HPE_INVALID_METHOD;
+  return HPE_OK;
 }
 
 int on_body(llhttp_t *p, const char *at, size_t len)
 {
-  frequest_t *req = (frequest_t *)p->data;
-  req->body = malloc(sizeof(char) * (len + 1));
-  strncpy((char *)req->body, at, len);
-  ((char *)req->body)[len] = '\0';
+  fc_request_t *req = (fc_request_t *)p->data;
+  req->body_buf = (fc_stringview_t){.ptr = at, .len = len};
   return HPE_OK;
 }
 
 int on_url(llhttp_t *p, const char *at, size_t len)
 {
-  frequest_t *req = (frequest_t *)p->data;
-  req->path = malloc(sizeof(char) * (len + 1));
-  strncpy(req->path, at, len);
-  req->path[len] = '\0';
+  fc_request_t *req = (fc_request_t *)p->data;
+  req->path = (fc_stringview_t){.ptr = at, .len = len};
   return HPE_OK;
 }
 
 /**
  * Match an already parsed request to a user defined route to be handled
  */
-void match_request_handler(frequest_t *request)
+void match_request_handler(fc_request_t *request)
 {
-  froute_handler_t handler;
-  if (fc_router_match_req(&router_glob, request->method, request->path, &handler))
-  {
-    fresponse_t *response = malloc(sizeof(fresponse_t));
-    response->status = FSTATUS_OK;
-    response->handler = request->handler;
+  char *path;
+  assert(FC_ERR_OK == fc_stringview_get(&path, &request->path));
 
-    handler(request, response);
-  };
+  fc_route_handler_t handler;
+  if (fc_router_match_req(&router_glob, request->method, path, &handler))
+  {
+    /* Note: must ensure that 'response' does not get poped while being used */
+    fc_response_t response;
+    response.status = FC_STATUS_OK; /* STATUS_OK (200) is the default status code */
+    response.handler = request->handler;
+    handler(request, &response);
+  }
+  else
+  {
+    send_404_response(request);
+  }
+
+  free(path);
+  free(request);
 }
 
 void on_write(uv_write_t *req, int status)
@@ -338,7 +342,7 @@ void on_close_connection(uv_handle_t *client)
   free(client);
 }
 
-void create_route(falcon_t *app, char *path, froute_handler_t handler, fhttp_method method)
+void create_route(fc_t *app, char *path, fc_route_handler_t handler, fc_http_method method)
 {
   char *p;
   assert(FC_ERR_OK == fc_string_clone(&p, path, strnlen(path, STRING_MAX_LEN)));
@@ -349,25 +353,30 @@ void create_route(falcon_t *app, char *path, froute_handler_t handler, fhttp_met
  * RESPONSE HANDLERS
  */
 
-void send_404_response(frequest_t *request)
+void send_404_response(fc_request_t *request)
 {
+  char *path;
+  assert(FC_ERR_OK == fc_stringview_get(&path, &request->path));
+
   char *title = "Not found";
-  size_t message_len = snprintf(NULL, 0, "Cannot %s %s", FHTTP_METHOD_STR(request->method), request->path) + 1;
+  char *method_str = FHTTP_METHOD_STR(request->method);
+  size_t message_len = snprintf(NULL, 0, "Cannot %s %s", method_str, path) + 1;
   char message[message_len];
-  snprintf(message, message_len, "Cannot %s %s", FHTTP_METHOD_STR(request->method), request->path);
-  fhttp_status status = FSTATUS_NOT_FOUND;
-  send_html_response(request->handler, status, title, message);
+  snprintf(message, message_len, "Cannot %s %s", method_str, path);
+  send_html_response(request->handler, FC_STATUS_NOT_FOUND, title, message);
+
+  free(path);
 }
 
-void send_bad_req_response(frequest_t *request)
+void send_bad_req_response(fc_request_t *request)
 {
   char *title = "Bad request";
   char *message = "Bad request";
-  fhttp_status status = FSTATUS_BAD_REQ;
+  fc_http_status status = FC_STATUS_BAD_REQ;
   send_html_response(request->handler, status, title, message);
 }
 
-void send_html_response(uv_handle_t *handler, fhttp_status status, char *title, char *message)
+void send_html_response(uv_handle_t *handler, fc_http_status status, char *title, char *message)
 {
   size_t body_buf_sz = snprintf(NULL, 0, HTML_TEMPLATE, title, message) + 1;
   char body_buf[body_buf_sz];
@@ -375,20 +384,21 @@ void send_html_response(uv_handle_t *handler, fhttp_status status, char *title, 
   send_http_response(handler, status, CONTENT_TYPE_HTML, body_buf, body_buf_sz);
 }
 
-void send_json_response(fresponse_t *res, char *pload, size_t pload_len)
+void send_json_response(fc_response_t *res, char *pload, size_t pload_len)
 {
   send_http_response(res->handler, res->status, CONTENT_TYPE_JSON, pload, pload_len);
 }
 
-void send_http_response(uv_handle_t *handler, fhttp_status status, char *cont_type, char *body, size_t body_len)
+void send_http_response(uv_handle_t *handler, fc_http_status status, char *cont_type, char *body, size_t body_len)
 {
-  size_t head_len = snprintf(NULL, 0, HTTP_RESPONSE_HEADER_TEMPLATE, status, FHTTP_STATUS_STR(status), cont_type, body_len) + 1;
+  char *status_str = FHTTP_STATUS_STR(status);
+  size_t head_len = snprintf(NULL, 0, HTTP_RESPONSE_HEADER_TEMPLATE, status, status_str, cont_type, body_len - 1) + 1;
   char head[head_len];
-  snprintf(head, head_len, HTTP_RESPONSE_HEADER_TEMPLATE, status, FHTTP_STATUS_STR(status), cont_type, body_len);
+  snprintf(head, head_len, HTTP_RESPONSE_HEADER_TEMPLATE, status, status_str, cont_type, body_len - 1);
 
   uv_buf_t *write_bufs = (uv_buf_t *)malloc(sizeof(uv_buf_t) * 2);
-  write_bufs[0] = uv_buf_init(head, head_len - 1); // -1 to remove \0, so it does get parsed along w/ the body
-  write_bufs[1] = uv_buf_init(body, body_len);
+  write_bufs[0] = uv_buf_init(head, head_len - 1);
+  write_bufs[1] = uv_buf_init(body, body_len - 1);
 
   uv_write_t *write_req = (uv_write_t *)malloc(sizeof(uv_write_t));
   uv_write(write_req, (uv_stream_t *)handler, write_bufs, 2, on_write);
