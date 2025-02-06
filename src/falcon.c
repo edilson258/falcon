@@ -4,6 +4,7 @@
 
 #define JACK_IMPLEMENTATION
 #include <jack.h>
+
 #include <llhttp.h>
 #include <uv.h>
 
@@ -99,7 +100,6 @@ int on_body(llhttp_t *p, const char *at, size_t len);
  */
 int init_server(char *host, unsigned port);
 void match_request_handler(frequest_t *request);
-char *make_route_id(char *path, fhttp_method method);
 void create_route(falcon_t *app, char *path, froute_handler_t handler, fhttp_method method);
 
 /**
@@ -343,14 +343,6 @@ void create_route(falcon_t *app, char *path, froute_handler_t handler, fhttp_met
   char *p;
   assert(FC_ERR_OK == fc_string_clone(&p, path, strnlen(path, STRING_MAX_LEN)));
   fc_router_add_route(&router_glob, method, p, handler);
-}
-
-char *make_route_id(char *path, fhttp_method method)
-{
-  size_t buf_sz = snprintf(NULL, 0, "%s-%d", path, method) + 1;
-  char *buf = malloc(sizeof(char) * buf_sz);
-  snprintf(buf, buf_sz, "%s-%d", path, method);
-  return buf;
 }
 
 /**
