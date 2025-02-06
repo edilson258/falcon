@@ -27,7 +27,7 @@ typedef struct
 
 fc_errno fc_router_init(fc_router_t *router);
 
-bool fc_router_add_route(fc_router_t *router, fhttp_method method, const char *path, froute_handler_t handler);
-bool fc_router_match_req(fc_router_t *router, fhttp_method method, const char *path, froute_handler_t *handler);
+bool fc_router_add_route(fc_router_t *router, fhttp_method method, char *path, froute_handler_t handler);
+bool fc_router_match_req(fc_router_t *router, fhttp_method method, char *path, froute_handler_t *handler);
 
 #endif // !__FALCON_ROUTER__

@@ -1,5 +1,8 @@
+#include <falcon/errn.h>
 #include <falcon/router.h>
+#include <falcon/stringview.h>
 
+#include <assert.h>
 #include <ctype.h>
 #include <regex.h>
 #include <stddef.h>
@@ -10,9 +13,9 @@
 
 /* Internal Functions */
 fc_errno fc_frag_init(const char *label, fc_route_frag_t type, fc_route_frag *frag);
-static void frag_destroy(fc_route_frag *frag);
-static char **path_split(const char *path, size_t *count);
-static char *path_normalize(const char *input);
+fc_errno fc_normalize_path_inplace(char **input);
+static void frag_deinit(fc_route_frag *frag);
+static char **path_split(char *path, size_t *count);
 static bool route_conflict_check(fc_route_frag *existing, fc_route_frag *new_frag);
 
 /* Router Initialization */
@@ -34,35 +37,35 @@ fc_errno fc_frag_init(const char *label, fc_route_frag_t type, fc_route_frag *fr
 }
 
 /* Recursive frag Destruction */
-static void frag_destroy(fc_route_frag *frag)
+static void frag_deinit(fc_route_frag *frag)
 {
   if (!frag)
     return;
-
   free((void *)frag->label);
-
-  frag_destroy(frag->children);
-  frag_destroy(frag->next);
+  frag_deinit(frag->children);
+  frag_deinit(frag->next);
   free(frag);
 }
 
-/* Path Normalization */
-static char *path_normalize(const char *input)
+fc_errno fc_normalize_path_inplace(char **input)
 {
-  if (!input || !*input)
-    return strdup("/");
+  if (!(*input) || strnlen(*input, STRING_MAX_LEN) < 1)
+  {
+    return fc_string_clone(input, "/", 1);
+  }
 
-  char *normalized = strdup(input);
   size_t read = 0, write = 0;
   bool prev_slash = false;
 
-  /* Process each character */
-  while (normalized[read])
+  while ((*input)[read])
   {
-    if (normalized[read] == '?' || normalized[read] == '#')
+    if ((*input)[read] == '?' || (*input)[read] == '#')
       break;
 
-    char c = (char)tolower(normalized[read++]);
+    char c = (char)tolower((*input)[read++]);
+
+    if (isspace(c))
+      continue;
 
     if (c == '/')
     {
@@ -75,27 +78,25 @@ static char *path_normalize(const char *input)
       prev_slash = false;
     }
 
-    normalized[write++] = c;
+    (*input)[write++] = c;
   }
 
   /* Trim trailing slash */
-  if (write > 1 && normalized[write - 1] == '/')
+  if (write > 1 && (*input)[write - 1] == '/')
     write--;
 
-  normalized[write] = '\0';
-  return normalized;
+  (*input)[write] = '\0';
+  return FC_ERR_OK;
 }
 
 /* Path Splitting */
-static char **path_split(const char *path, size_t *count)
+static char **path_split(char *path, size_t *count)
 {
-  char *copy = path_normalize(path);
-  if (!copy)
-    return NULL;
+  assert(FC_ERR_OK == fc_normalize_path_inplace(&path));
 
   size_t capacity = 4;
   char **segments = malloc(sizeof(char *) * capacity);
-  char *token = strtok(copy, "/");
+  char *token = strtok(path, "/");
   *count = 0;
 
   while (token)
@@ -118,11 +119,11 @@ static char **path_split(const char *path, size_t *count)
     token = strtok(NULL, "/");
   }
 
-  free(copy);
+  free(path);
   return segments;
 
 error:
-  free(copy);
+  free(path);
   for (size_t i = 0; i < *count; i++)
     free(segments[i]);
   free(segments);
@@ -141,7 +142,7 @@ static bool route_conflict_check(fc_route_frag *existing, fc_route_frag *new_fra
   return false;
 }
 
-bool fc_router_add_route(fc_router_t *router, fhttp_method method, const char *path, froute_handler_t handler)
+bool fc_router_add_route(fc_router_t *router, fhttp_method method, char *path, froute_handler_t handler)
 {
   if (!router || method >= __FHTTP_METHODS_COUNT__ || !path || !handler)
     return false;
@@ -216,7 +217,7 @@ error:
   return false;
 }
 
-bool fc_router_match_req(fc_router_t *router, fhttp_method method, const char *path, froute_handler_t *handler)
+bool fc_router_match_req(fc_router_t *router, fhttp_method method, char *path, froute_handler_t *handler)
 {
   if (!router || method >= __FHTTP_METHODS_COUNT__ || !path || !handler)
     return false;

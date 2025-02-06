@@ -1,17 +1,18 @@
-#include <assert.h>
-#include <stdarg.h>
-#include <stddef.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <falcon.h>
+#include <falcon/router.h>
+#include <falcon/stringview.h>
 
 #define JACK_IMPLEMENTATION
 #include <jack.h>
 #include <llhttp.h>
 #include <uv.h>
 
-#include <falcon.h>
-#include <falcon/router.h>
+#include <assert.h>
+#include <stdarg.h>
+#include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 const unsigned SERVER_BACKLOG = 128;
 
@@ -339,7 +340,9 @@ void on_close_connection(uv_handle_t *client)
 
 void create_route(falcon_t *app, char *path, froute_handler_t handler, fhttp_method method)
 {
-  fc_router_add_route(&router_glob, method, path, handler);
+  char *p;
+  assert(FC_ERR_OK == fc_string_clone(&p, path, strnlen(path, STRING_MAX_LEN)));
+  fc_router_add_route(&router_glob, method, p, handler);
 }
 
 char *make_route_id(char *path, fhttp_method method)
