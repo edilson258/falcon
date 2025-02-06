@@ -9,7 +9,7 @@
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
 
-fc_errno fc_stringview_new(char *ptr, size_t len, fc_stringview *sv)
+fc_errno fc_stringview_new(char *ptr, size_t len, fc_stringview_t *sv)
 {
   fc_errno err = FC_ERR_OK;
   sv->ptr = ptr;
@@ -17,11 +17,9 @@ fc_errno fc_stringview_new(char *ptr, size_t len, fc_stringview *sv)
   return err;
 }
 
-fc_errno fc_stringview_get(fc_stringview *sv, char **out)
+fc_errno fc_stringview_get(char **out, fc_stringview_t *sv)
 {
-  (*out) = malloc(sizeof(char) * (sv->len + 1));
-  strncpy(*out, sv->ptr, sv->len);
-  (*out)[sv->len] = '\0';
+  (*out) = strndup(sv->ptr, sv->len);
   return FC_ERR_OK;
 }
 
@@ -31,13 +29,7 @@ fc_errno fc_string_clone(char **out, const char *src, size_t given_len)
   {
     return FC_ERR_INVALID_STRING;
   }
-
-  size_t len = MIN(strnlen(src, STRING_MAX_LEN), given_len);
-
-  (*out) = malloc(sizeof(char) * (len) + 1);
-  strncpy(*out, src, len);
-  (*out)[len] = '\0';
-
+  (*out) = strndup(src, MIN(strnlen(src, STRING_MAX_LEN), given_len));
   return FC_ERR_OK;
 }
 
