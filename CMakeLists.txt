@@ -17,8 +17,6 @@ find_library(
 file(GLOB_RECURSE falcon_src "${CMAKE_SOURCE_DIR}/src/*.c")
 add_library(falcon STATIC ${falcon_src})
 target_include_directories(falcon PUBLIC ${CMAKE_SOURCE_DIR}/include)
-target_include_directories(falcon
-                           PUBLIC ${CMAKE_SOURCE_DIR}/external/uthash/include)
 target_include_directories(falcon PUBLIC ${CMAKE_SOURCE_DIR}/external/llhttp)
 target_include_directories(falcon PUBLIC ${CMAKE_SOURCE_DIR}/external/jack)
 
