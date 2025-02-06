@@ -1,50 +1,37 @@
-#include <falcon/errn.h>
-#include <falcon/router.h>
-#include <falcon/stringview.h>
-
 #include <assert.h>
 #include <ctype.h>
 #include <regex.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
+#include <falcon/errn.h>
+#include <falcon/router.h>
+#include <falcon/stringview.h>
+
 /* Internal Functions */
-fc_errno fc_frag_init(const char *label, fc_route_frag_t type, fc_route_frag *frag);
-fc_errno fc_normalize_path_inplace(char **input);
-static void frag_deinit(fc_route_frag *frag);
+static fc_errno fc_frag_init(const char *label, fc_route_frag_t type, fc_route_frag *frag);
+static fc_errno fc_normalize_path_inplace(char **input);
 static char **path_split(char *path, size_t *count);
 static bool route_conflict_check(fc_route_frag *existing, fc_route_frag *new_frag);
 
 /* Router Initialization */
 fc_errno fc_router_init(fc_router_t *router)
 {
-  fc_errno err = FC_ERR_OK;
   fc_frag_init("", FROUTE_FRAG_STATIC, &router->root);
-  return err;
+  return FC_ERR_OK;
 }
 
 fc_errno fc_frag_init(const char *label, fc_route_frag_t type, fc_route_frag *frag)
 {
-  fc_errno err = FC_ERR_OK;
   frag->label = strdup(label);
   frag->type = type;
   frag->next = NULL;
   frag->children = NULL;
-  return err;
-}
-
-/* Recursive frag Destruction */
-static void frag_deinit(fc_route_frag *frag)
-{
-  if (!frag)
-    return;
-  free((void *)frag->label);
-  frag_deinit(frag->children);
-  frag_deinit(frag->next);
-  free(frag);
+  return FC_ERR_OK;
 }
 
 fc_errno fc_normalize_path_inplace(char **input)
@@ -54,38 +41,23 @@ fc_errno fc_normalize_path_inplace(char **input)
     return fc_string_clone(input, "/", 1);
   }
 
-  size_t read = 0, write = 0;
   bool prev_slash = false;
+  size_t read = 0, write = 0;
 
   while ((*input)[read])
   {
-    if ((*input)[read] == '?' || (*input)[read] == '#')
-      break;
-
     char c = (char)tolower((*input)[read++]);
-
-    if (isspace(c))
+    if (isspace(c) || (c == '/' && prev_slash))
       continue;
-
-    if (c == '/')
-    {
-      if (prev_slash)
-        continue;
-      prev_slash = true;
-    }
-    else
-    {
-      prev_slash = false;
-    }
-
+    prev_slash = c == '/' ? true : false;
     (*input)[write++] = c;
   }
 
   /* Trim trailing slash */
   if (write > 1 && (*input)[write - 1] == '/')
     write--;
-
   (*input)[write] = '\0';
+
   return FC_ERR_OK;
 }
 

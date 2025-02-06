@@ -81,8 +81,8 @@ struct sockaddr_in server_addr_glob;
 
 fc_router_t router_glob;
 
-llhttp_t parser;
-llhttp_settings_t settings;
+llhttp_t http_parser_glob;
+llhttp_settings_t http_parser_settings_glob;
 
 // uv IO callbacks
 void on_write(uv_write_t *req, int status);
@@ -124,11 +124,11 @@ fc_errno fc_init(fc_t *app)
   fc_router_init(&router_glob);
 
   // init http parser
-  llhttp_settings_init(&settings);
-  settings.on_url = on_url;
-  settings.on_method = on_method;
-  settings.on_body = on_body;
-  llhttp_init(&parser, HTTP_REQUEST, &settings);
+  llhttp_settings_init(&http_parser_settings_glob);
+  http_parser_settings_glob.on_url = on_url;
+  http_parser_settings_glob.on_method = on_method;
+  http_parser_settings_glob.on_body = on_body;
+  llhttp_init(&http_parser_glob, HTTP_REQUEST, &http_parser_settings_glob);
 
   return FC_ERR_OK;
 }
@@ -243,10 +243,10 @@ void on_read_request(uv_stream_t *client, long nread, const uv_buf_t *buf)
   // TODO: stop reading
   if (nread > 0)
   {
-    fc_request_t *req = (fc_request_t *)malloc(sizeof(fc_request_t));
-    req->handler = (uv_handle_t *)client;
-    req->buf = (fc_stringview_t){.ptr = buf->base, .len = nread};
-    parse_request(buf->base, nread, req);
+    fc_request_t req;
+    req.handler = (uv_handle_t *)client;
+    req.buf = (fc_stringview_t){.ptr = buf->base, .len = nread};
+    parse_request(buf->base, nread, &req);
   }
   else
   {
@@ -260,9 +260,9 @@ void on_read_request(uv_stream_t *client, long nread, const uv_buf_t *buf)
  */
 void parse_request(char *raw_buf, size_t buf_sz, fc_request_t *request)
 {
-  parser.data = request;
-  enum llhttp_errno parse_err = llhttp_execute(&parser, raw_buf, buf_sz);
-  llhttp_reset(&parser);
+  http_parser_glob.data = request;
+  enum llhttp_errno parse_err = llhttp_execute(&http_parser_glob, raw_buf, buf_sz);
+  llhttp_reset(&http_parser_glob);
   if (parse_err != HPE_OK)
     return send_bad_req_response(request);
   match_request_handler(request);
@@ -317,19 +317,12 @@ void match_request_handler(fc_request_t *request)
   }
 
   free(path);
-  free(request);
 }
 
 void on_write(uv_write_t *req, int status)
 {
-  for (int i = 0; i < req->nbufs; ++i)
-  {
-    // free(req->bufs[0].base);
-  }
-
   free(req->bufs);
   free(req);
-
   uv_close((uv_handle_t *)req->handle, on_close_connection);
 }
 
