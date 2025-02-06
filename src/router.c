@@ -6,26 +6,29 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/param.h>
 #include <time.h>
 
 #include <falcon/errn.h>
 #include <falcon/router.h>
 #include <falcon/stringview.h>
 
+#define FC__PATH_MAX_FRAGS 100
+
 /* Internal Functions */
-static fc_errno fc_frag_init(const char *label, fc_route_frag_t type, fc_route_frag *frag);
-static fc_errno fc_normalize_path_inplace(char **input);
-static char **path_split(char *path, size_t *count);
+static fc_errno fc__frag_init(const char *label, fc_route_frag_t type, fc_route_frag *frag);
+static fc_errno fc__normalize_path_inplace(char **input);
+static fc_errno fc__split_path(char *path, size_t *count, char *raw_frags[FC__PATH_MAX_FRAGS]);
 static bool route_conflict_check(fc_route_frag *existing, fc_route_frag *new_frag);
 
 /* Router Initialization */
 fc_errno fc_router_init(fc_router_t *router)
 {
-  fc_frag_init("", FROUTE_FRAG_STATIC, &router->root);
+  fc__frag_init("", FROUTE_FRAG_STATIC, &router->root);
   return FC_ERR_OK;
 }
 
-fc_errno fc_frag_init(const char *label, fc_route_frag_t type, fc_route_frag *frag)
+fc_errno fc__frag_init(const char *label, fc_route_frag_t type, fc_route_frag *frag)
 {
   frag->label = strdup(label);
   frag->type = type;
@@ -34,7 +37,7 @@ fc_errno fc_frag_init(const char *label, fc_route_frag_t type, fc_route_frag *fr
   return FC_ERR_OK;
 }
 
-fc_errno fc_normalize_path_inplace(char **input)
+fc_errno fc__normalize_path_inplace(char **input)
 {
   if (!(*input) || strnlen(*input, STRING_MAX_LEN) < 1)
   {
@@ -61,43 +64,25 @@ fc_errno fc_normalize_path_inplace(char **input)
   return FC_ERR_OK;
 }
 
-/* Path Splitting */
-static char **path_split(char *path, size_t *count)
+fc_errno fc__split_path(char *path, size_t *count, char *raw_frags[FC__PATH_MAX_FRAGS])
 {
-  assert(FC_ERR_OK == fc_normalize_path_inplace(&path));
+  assert(FC_ERR_OK == fc__normalize_path_inplace(&path));
 
-  size_t capacity = 4;
-  char **segments = malloc(sizeof(char *) * capacity);
-  char *token = strtok(path, "/");
   *count = 0;
+  char *token = strtok(path, "/");
 
   while (token)
   {
-    if (*count >= capacity)
+    if (*count >= FC__PATH_MAX_FRAGS)
     {
-      capacity *= 2;
-      char **new_segments = realloc(segments, capacity * sizeof(char *));
-      if (!new_segments)
-        goto error;
-      segments = new_segments;
+      return FC_ERR_STRING_TOO_LONG;
     }
-
-    segments[*count] = strdup(token);
-
-    if (!segments[*count])
-      goto error;
-
+    raw_frags[*count] = token;
     (*count)++;
     token = strtok(NULL, "/");
   }
 
-  return segments;
-
-error:
-  for (size_t i = 0; i < *count; i++)
-    free(segments[i]);
-  free(segments);
-  return NULL;
+  return FC_ERR_OK;
 }
 
 /* Route Conflict Detection */
@@ -114,33 +99,28 @@ static bool route_conflict_check(fc_route_frag *existing, fc_route_frag *new_fra
 
 bool fc_router_add_route(fc_router_t *router, fc_http_method method, char *path, fc_route_handler_t handler)
 {
-  if (!router || method >= __FC_HTTP_METHODS_COUNT__ || !path || !handler)
-    return false;
+  size_t raw_frags_count = 0;
+  char *raw_frags[FC__PATH_MAX_FRAGS];
+  assert(FC_ERR_OK == fc__split_path(path, &raw_frags_count, (char **)raw_frags));
 
-  size_t seg_count = 0;
-  char **segments = path_split(path, &seg_count);
-  if (!segments)
-    return false;
-
-  fc_route_frag *current = &router->root;
   bool wildcard_seen = false;
+  fc_route_frag *current = &router->root;
 
-  for (size_t i = 0; i < seg_count; i++)
+  for (size_t i = 0; i < raw_frags_count; i++)
   {
     fc_route_frag_t type = FROUTE_FRAG_STATIC;
-    const char *label = segments[i];
+    const char *raw_frag = raw_frags[i];
 
     if (wildcard_seen)
     {
-      free(segments[i]);
-      goto error;
+      return false;
     }
 
-    if (label[0] == ':')
+    if (raw_frag[0] == ':')
     {
       type = FROUTE_FRAG_PARAM;
     }
-    else if (strcmp(label, "**") == 0)
+    else if (strncmp(raw_frag, "**", MIN(2, strnlen(raw_frag, STRING_MAX_LEN))) == 0)
     {
       type = FROUTE_FRAG_WILDCARD;
       wildcard_seen = true;
@@ -152,14 +132,13 @@ bool fc_router_add_route(fc_router_t *router, fc_http_method method, char *path,
     {
       if (route_conflict_check(*child_ptr, current))
       {
-        fprintf(stderr, "Route conflict at segment: %s\n", label);
-        goto error;
+        fprintf(stderr, "Route conflict at segment: %s\n", raw_frag);
+        return false;
       }
 
-      if ((*child_ptr)->type == type && (type != FROUTE_FRAG_STATIC || strcmp((*child_ptr)->label, label) == 0))
+      if ((*child_ptr)->type == type && (type != FROUTE_FRAG_STATIC || strcmp((*child_ptr)->label, raw_frag) == 0))
       {
         current = *child_ptr;
-        free(segments[i]);
         goto next_segment;
       }
 
@@ -167,24 +146,16 @@ bool fc_router_add_route(fc_router_t *router, fc_http_method method, char *path,
     }
 
     fc_route_frag *new_frag = malloc(sizeof(fc_route_frag));
-    fc_frag_init(label, type, new_frag);
+    fc__frag_init(raw_frag, type, new_frag);
 
     *child_ptr = new_frag;
     current = new_frag;
-    free(segments[i]);
 
   next_segment:;
   }
 
   current->handlers[method] = handler;
-  free(segments);
   return true;
-
-error:
-  for (size_t i = 0; i < seg_count; i++)
-    free(segments[i]);
-  free(segments);
-  return false;
 }
 
 bool fc_router_match_req(fc_router_t *router, fc_http_method method, char *path, fc_route_handler_t *handler)
@@ -192,14 +163,13 @@ bool fc_router_match_req(fc_router_t *router, fc_http_method method, char *path,
   if (!router || method >= __FC_HTTP_METHODS_COUNT__ || !path || !handler)
     return false;
 
-  size_t seg_count = 0;
-  char **segments = path_split(path, &seg_count);
-  if (!segments)
-    return false;
+  size_t raw_frags_count = 0;
+  char *raw_frags[FC__PATH_MAX_FRAGS];
+  assert(FC_ERR_OK == fc__split_path(path, &raw_frags_count, (char **)raw_frags));
 
   fc_route_frag *current = &router->root;
 
-  for (size_t i = 0; i < seg_count; i++)
+  for (size_t i = 0; i < raw_frags_count; i++)
   {
     fc_route_frag *child = current->children;
     bool found = false;
@@ -209,7 +179,7 @@ bool fc_router_match_req(fc_router_t *router, fc_http_method method, char *path,
       switch (child->type)
       {
       case FROUTE_FRAG_STATIC:
-        found = (strcmp(child->label, segments[i]) == 0);
+        found = (strcmp(child->label, raw_frags[i]) == 0);
         break;
 
       case FROUTE_FRAG_PARAM:
@@ -229,16 +199,10 @@ bool fc_router_match_req(fc_router_t *router, fc_http_method method, char *path,
 
     if (!found)
     {
-      for (size_t j = 0; j < seg_count; j++)
-        free(segments[j]);
-      free(segments);
       return false;
     }
   }
 
   *handler = current->handlers[method];
-  for (size_t i = 0; i < seg_count; i++)
-    free(segments[i]);
-  free(segments);
   return *handler != NULL;
 }
