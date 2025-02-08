@@ -148,6 +148,9 @@ fc_errno fc__router_add_route(fc_router_t *router, fc_http_method method, char *
   next_fragment:;
   }
 
+  if (current->handlers[method])
+    return FC_ERR_ROUTE_CONFLIT;
+
   current->handlers[method] = handler;
   return FC_ERR_OK;
 }
