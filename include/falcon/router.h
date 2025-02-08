@@ -1,33 +1,34 @@
 #ifndef __FALCON_ROUTER__
 #define __FALCON_ROUTER__
 
+#include "falcon/errn.h"
 #include <falcon.h>
 #include <stdbool.h>
 
 typedef enum
 {
-  FROUTE_FRAG_STATIC = 1,
-  FROUTE_FRAG_PARAM = 2,
-  FROUTE_FRAG_WILDCARD = 3,
-} fc_route_frag_t;
+  FC__ROUTE_FRAG_STATIC = 1,
+  FC__ROUTE_FRAG_PARAM = 2,
+  FC__ROUTE_FRAG_WILDCARD = 3,
+} fc__route_frag_t;
 
-typedef struct fc_route_frag
+typedef struct fc__route_frag
 {
   const char *label;
-  fc_route_frag_t type;
-  struct fc_route_frag *next;
-  struct fc_route_frag *children;
+  fc__route_frag_t type;
+  struct fc__route_frag *next;
+  struct fc__route_frag *children;
   fc_route_handler_t handlers[__FC_HTTP_METHODS_COUNT__];
-} fc_route_frag;
+} fc__route_frag;
 
 typedef struct
 {
-  fc_route_frag root;
+  fc__route_frag root;
 } fc_router_t;
 
-fc_errno fc_router_init(fc_router_t *router);
+fc_errno fc__router_init(fc_router_t *router);
 
-bool fc_router_add_route(fc_router_t *router, fc_http_method method, char *path, fc_route_handler_t handler);
-bool fc_router_match_req(fc_router_t *router, fc_http_method method, char *path, fc_route_handler_t *handler);
+fc_errno fc__router_add_route(fc_router_t *router, fc_http_method method, char *path, fc_route_handler_t handler);
+fc_errno fc__router_match_req(fc_router_t *router, fc_http_method method, char *path, fc_route_handler_t *handler);
 
 #endif // !__FALCON_ROUTER__

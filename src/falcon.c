@@ -102,7 +102,7 @@ int on_body(llhttp_t *p, const char *at, size_t len);
  */
 int init_server(char *host, unsigned port);
 void match_request_handler(fc_request_t *request);
-void create_route(fc_t *app, char *path, fc_route_handler_t handler, fc_http_method method);
+[[nodiscard]] fc_errno add_route(fc_t *app, char *path, fc_route_handler_t handler, fc_http_method method);
 
 /**
  * RESPONSE HANDLERS
@@ -121,7 +121,7 @@ void send_http_response(uv_handle_t *handler, fc_http_status status, char *cont_
 fc_errno fc_init(fc_t *app)
 {
   // init app main router
-  fc_router_init(&router_glob);
+  fc__router_init(&router_glob);
 
   // init http parser
   llhttp_settings_init(&http_parser_settings_glob);
@@ -135,12 +135,12 @@ fc_errno fc_init(fc_t *app)
 
 void fc_get(fc_t *app, char *path, fc_route_handler_t handler)
 {
-  create_route(app, path, handler, FC_HTTP_GET);
+  assert(FC_ERR_OK == add_route(app, path, handler, FC_HTTP_GET));
 }
 
 void fc_post(fc_t *app, char *path, fc_route_handler_t handler)
 {
-  create_route(app, path, handler, FC_HTTP_POST);
+  assert(FC_ERR_OK == add_route(app, path, handler, FC_HTTP_POST));
 }
 
 void fc_res_ok(fc_response_t *res)
@@ -303,7 +303,7 @@ void match_request_handler(fc_request_t *request)
   assert(FC_ERR_OK == fc_stringview_get(&path, &request->path));
 
   fc_route_handler_t handler;
-  if (fc_router_match_req(&router_glob, request->method, path, &handler))
+  if (FC_ERR_OK == fc__router_match_req(&router_glob, request->method, path, &handler))
   {
     /* Note: must ensure that 'response' does not get poped while being used */
     fc_response_t response;
@@ -335,11 +335,13 @@ void on_close_connection(uv_handle_t *client)
   free(client);
 }
 
-void create_route(fc_t *app, char *path, fc_route_handler_t handler, fc_http_method method)
+[[nodiscard]] fc_errno add_route(fc_t *app, char *path, fc_route_handler_t handler, fc_http_method method)
 {
   char *p;
-  assert(FC_ERR_OK == fc_string_clone(&p, path, strnlen(path, STRING_MAX_LEN)));
-  fc_router_add_route(&router_glob, method, p, handler);
+  fc_errno err = fc_string_clone(&p, path, strnlen(path, STRING_MAX_LEN));
+  if (FC_ERR_OK != err)
+    return err;
+  return fc__router_add_route(&router_glob, method, p, handler);
 }
 
 /**

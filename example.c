@@ -1,18 +1,22 @@
+#include "jack.h"
 #include <falcon.h>
 #include <stdio.h>
 #include <stdlib.h>
 
 struct User
 {
+  int id;
   char *email;
   char *password;
 };
 
 unsigned users_count = 0;
-struct User users[1024];
+struct User users[1024] = {
+    {.id = 1, .email = "alice@test.com", .password = "alice123"},
+    {.id = 2, .email = "bob@test.com", .password = "bob123"}};
 
 void on_listen();
-void add_user(char *username, char *password);
+void add_user(int id, char *username, char *password);
 
 // Endpoints
 void users_find(fc_request_t *req, fc_response_t *res);
@@ -22,6 +26,10 @@ int main(void)
 {
   fc_t app;
   fc_init(&app);
+
+  add_user(1, "alice@test.com", "alice123");
+  add_user(2, "bob@test.com", "bob123");
+  add_user(3, "john@test.com", "john123");
 
   fc_get(&app, "/users", users_find);
   fc_post(&app, "/users", users_create);
@@ -34,9 +42,9 @@ void on_listen()
   fprintf(stderr, "Server is running...\n");
 }
 
-void add_user(char *email, char *password)
+void add_user(int id, char *email, char *password)
 {
-  users[users_count++] = (struct User){.email = email, .password = password};
+  users[users_count++] = (struct User){.id = id, .email = email, .password = password};
 }
 
 void users_find(fc_request_t *req, fc_response_t *res)
@@ -49,6 +57,10 @@ void users_find(fc_request_t *req, fc_response_t *res)
 
   for (int i = 0; i < users_count; ++i)
   {
+    jjson_key_value id = {
+        .key = "id",
+        .value.type = JSON_NUMBER,
+        .value.data.number = users[i].id};
     jjson_key_value email = {
         .key = "email",
         .value.type = JSON_STRING,
@@ -61,6 +73,7 @@ void users_find(fc_request_t *req, fc_response_t *res)
     jjson_t *j = malloc(sizeof(jjson_t));
     jjson_init(j);
 
+    jjson_add(j, id);
     jjson_add(j, email);
     jjson_add(j, passwd);
 
