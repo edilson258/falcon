@@ -8,6 +8,7 @@
 #include <sys/param.h>
 #include <time.h>
 
+#include <falcon.h>
 #include <falcon/errn.h>
 #include <falcon/router.h>
 #include <falcon/stringview.h>
@@ -155,7 +156,7 @@ fc_errno fc__router_add_route(fc_router_t *router, fc_http_method method, char *
   return FC_ERR_OK;
 }
 
-fc_errno fc__router_match_req(fc_router_t *router, fc_http_method method, char *path, fc_route_handler_t *handler)
+fc_errno fc__router_match_req(fc_router_t *router, fc_request_t *req, char *path, fc_route_handler_t *handler)
 {
   size_t raw_frags_count = 0;
   char *raw_frags[PATH_MAX_FRAGS];
@@ -178,6 +179,14 @@ fc_errno fc__router_match_req(fc_router_t *router, fc_http_method method, char *
         found = (strncmp(child->label, raw_frags[i], STRING_MAX_LEN) == 0);
         break;
       case FC__ROUTE_FRAG_PARAM:
+        found = true;
+        if (req->params.nparams < FC__REQ_PARAM_MAX_LEN) /* Ignore params if too many */
+        {
+          fc_stringview_t name = {.ptr = child->label + 1, .len = strnlen(child->label + 1, STRING_MAX_LEN)} /* '+1' to skip ':' */;
+          fc_stringview_t value = {.ptr = raw_frags[i], .len = strnlen(raw_frags[i], STRING_MAX_LEN)};
+          req->params.params[req->params.nparams++] = (fc__req_param_t){.name = name, .value = value};
+        }
+        break;
       case FC__ROUTE_FRAG_WILDCARD:
         found = true;
         break;
@@ -193,9 +202,9 @@ fc_errno fc__router_match_req(fc_router_t *router, fc_http_method method, char *
     }
 
     if (!found)
-      return FC_ERR_ROUTE_NOT_FOUND;
+      return FC_ERR_ENTRY_NOT_FOUND;
   }
 
-  *handler = current->handlers[method];
-  return *handler == NULL ? FC_ERR_ROUTE_NOT_FOUND : FC_ERR_OK;
+  *handler = current->handlers[req->method];
+  return *handler == NULL ? FC_ERR_ENTRY_NOT_FOUND : FC_ERR_OK;
 }

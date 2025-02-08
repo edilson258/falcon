@@ -1,6 +1,8 @@
 #include <assert.h>
+#include <inttypes.h>
 #include <stdarg.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -164,6 +166,29 @@ void fc_res_set_status(fc_response_t *res, fc_http_status status)
   res->status = status;
 }
 
+fc_errno fc_req_get_param(fc_request_t *req, const char *name, char **out)
+{
+  for (int i = 0; i < req->params.nparams; ++i)
+  {
+    if (strncmp(name, req->params.params[i].name.ptr, req->params.params[i].name.len) == 0)
+    {
+      *out = (char *)req->params.params[i].value.ptr;
+      return FC_ERR_OK;
+    }
+  }
+  return FC_ERR_ENTRY_NOT_FOUND;
+}
+
+fc_errno fc_req_get_param_as_int(fc_request_t *req, const char *name, int *out)
+{
+  char *out_str;
+  fc_errno err = fc_req_get_param(req, name, &out_str);
+  if (FC_ERR_OK != err)
+    return err;
+  *out = (int)strtol(out_str, NULL, 10);
+  return FC_ERR_OK;
+}
+
 int fc_listen(fc_t *app, char *host, unsigned int port, fon_listen_t cb)
 {
   int result = 0;
@@ -303,7 +328,7 @@ void match_request_handler(fc_request_t *request)
   assert(FC_ERR_OK == fc_stringview_get(&path, &request->path));
 
   fc_route_handler_t handler;
-  if (FC_ERR_OK == fc__router_match_req(&router_glob, request->method, path, &handler))
+  if (FC_ERR_OK == fc__router_match_req(&router_glob, request, path, &handler))
   {
     /* Note: must ensure that 'response' does not get poped while being used */
     fc_response_t response;
