@@ -24,7 +24,8 @@ static bool fc__check_route_conflict(fc__route_frag *existing, fc__route_frag *n
 /* Router Initialization */
 fc_errno fc__router_init(fc_router_t *router)
 {
-  fc__frag_init("", FC__ROUTE_FRAG_STATIC, &router->root);
+  router->root = malloc(sizeof(fc__route_frag));
+  fc__frag_init("", FC__ROUTE_FRAG_STATIC, router->root);
   return FC_ERR_OK;
 }
 
@@ -36,6 +37,16 @@ fc_errno fc__frag_init(const char *label, fc__route_frag_t type, fc__route_frag 
   frag->children = NULL;
   memset(frag->handlers, 0, sizeof(fc__route_handler *) * (int)FC__HTTP_METHODS_COUNT);
   return FC_ERR_OK;
+}
+
+void fc__frag_deinit(fc__route_frag *frag)
+{
+  if (!frag)
+    return;
+  free((void *)frag->label);
+  fc__frag_deinit(frag->next);
+  fc__frag_deinit(frag->children);
+  free(frag);
 }
 
 fc_errno fc__normalize_path_inplace(char **input)
@@ -107,7 +118,7 @@ fc_errno fc__router_add_route(fc_router_t *router, fc_http_method method, char *
     return err;
 
   bool wildcard_seen = false;
-  fc__route_frag *current = &router->root;
+  fc__route_frag *current = router->root;
 
   for (size_t i = 0; i < raw_frags_count; i++)
   {
@@ -168,7 +179,7 @@ fc_errno fc__router_match_req(fc_router_t *router, fc_request_t *req, char *path
   if (FC_ERR_OK != err)
     return err;
 
-  fc__route_frag *current = &router->root;
+  fc__route_frag *current = router->root;
 
   for (size_t i = 0; i < raw_frags_count; i++)
   {

@@ -28,10 +28,11 @@ typedef struct fc__route_frag
 
 typedef struct
 {
-  fc__route_frag root;
+  fc__route_frag *root;
 } fc_router_t;
 
 fc_errno fc__router_init(fc_router_t *router);
+void fc__frag_deinit(fc__route_frag *frag);
 
 fc_errno fc__router_add_route(fc_router_t *router, fc_http_method method, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
 fc_errno fc__router_match_req(fc_router_t *router, fc_request_t *req, char *path, fc__route_handler **handler);

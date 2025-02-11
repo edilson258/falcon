@@ -160,6 +160,7 @@ void fc_res_json(fc_response_t *res, jjson_t *json)
   assert(err == JJE_OK);
   size_t body_len = strlen(body);
   send_json_response(res, body, body_len);
+  free(body);
 }
 
 void fc_res_set_status(fc_response_t *res, fc_http_status status)
@@ -387,6 +388,7 @@ void match_request_handler(fc_request_t *request)
 
 defer:
   free(path);
+  free((void *)request->buf.ptr);
   if (handler->schema)
     jjson_deinit((jjson_t *)request->body);
 }

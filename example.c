@@ -74,9 +74,9 @@ void users_find(fc_request_t *req, fc_response_t *res)
     value.type = JSON_OBJECT;
     value.data.object = j;
 
-    jjson_key_value id = {.key = "id", .value.type = JSON_NUMBER, .value.data.number = users[i].id};
-    jjson_key_value email = {.key = "email", .value.type = JSON_STRING, .value.data.string = users[i].email};
-    jjson_key_value passwd = {.key = "password", .value.type = JSON_STRING, .value.data.string = users[i].password};
+    jjson_key_value id = {.key = strdup("id"), .value.type = JSON_NUMBER, .value.data.number = users[i].id};
+    jjson_key_value email = {.key = strdup("email"), .value.type = JSON_STRING, .value.data.string = strdup(users[i].email)};
+    jjson_key_value passwd = {.key = strdup("password"), .value.type = JSON_STRING, .value.data.string = strdup(users[i].password)};
 
     jjson_add(j, id);
     jjson_add(j, email);
@@ -86,13 +86,15 @@ void users_find(fc_request_t *req, fc_response_t *res)
   }
 
   jjson_key_value kv = {
-      .key = "users",
+      .key = strdup("users"),
       .value.type = JSON_ARRAY,
       .value.data.array = arr,
   };
 
   jjson_add(&json, kv);
   fc_res_json(res, &json);
+
+  jjson_deinit(&json);
 }
 
 void users_find_by_id(fc_request_t *req, fc_response_t *res)
@@ -110,26 +112,30 @@ void users_find_by_id(fc_request_t *req, fc_response_t *res)
     }
   }
 
-  jjson_t *json = malloc(sizeof(jjson_t));
-  jjson_init(json);
+  jjson_t json;
+  jjson_init(&json);
 
   if (user)
   {
-    jjson_key_value id = {.key = "id", .value.type = JSON_NUMBER, .value.data.number = user->id};
-    jjson_key_value email = {.key = "email", .value.type = JSON_STRING, .value.data.string = user->email};
-    jjson_key_value passwd = {.key = "password", .value.type = JSON_STRING, .value.data.string = user->password};
+    jjson_key_value id = {.key = strdup("id"), .value.type = JSON_NUMBER, .value.data.number = user->id};
+    jjson_key_value email = {.key = strdup("email"), .value.type = JSON_STRING, .value.data.string = strdup(user->email)};
+    jjson_key_value passwd = {.key = strdup("password"), .value.type = JSON_STRING, .value.data.string = strdup(user->password)};
 
-    jjson_add(json, id);
-    jjson_add(json, email);
-    jjson_add(json, passwd);
+    jjson_add(&json, id);
+    jjson_add(&json, email);
+    jjson_add(&json, passwd);
   }
   else
   {
-    jjson_key_value null_user = {.key = "user", .value.type = JSON_NULL};
-    jjson_add(json, null_user);
+    jjson_key_value null_user = {.key = strdup("user"), .value.type = JSON_NULL};
+    jjson_add(&json, null_user);
   }
 
-  fc_res_json(res, json);
+  fc_res_json(res, &json);
+
+  jjson_deinit(&json);
+
+  exit(0);
 }
 
 void users_create(fc_request_t *req, fc_response_t *res)
@@ -147,4 +153,6 @@ void users_create(fc_request_t *req, fc_response_t *res)
 
   fc_res_set_status(res, FC_STATUS_CREATED);
   fc_res_json(res, &res_json);
+
+  jjson_deinit(&res_json);
 }
