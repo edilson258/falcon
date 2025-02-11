@@ -14,7 +14,7 @@ typedef struct
   size_t len;
 } fc_stringview_t;
 
-fc_errno fc_stringview_new(char *ptr, size_t len, fc_stringview_t *sv);
+fc_errno fc_stringview_init(const char *ptr, size_t len, fc_stringview_t *sv);
 fc_errno fc_stringview_get(char **out, fc_stringview_t *sv);
 
 fc_errno fc_string_clone(char **out, const char *src, size_t len);

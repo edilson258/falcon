@@ -34,6 +34,7 @@ fc_errno fc__frag_init(const char *label, fc__route_frag_t type, fc__route_frag 
   frag->type = type;
   frag->next = NULL;
   frag->children = NULL;
+  memset(frag->handlers, 0, sizeof(fc__route_handler *) * (int)FC__HTTP_METHODS_COUNT);
   return FC_ERR_OK;
 }
 
@@ -97,7 +98,7 @@ static bool fc__check_route_conflict(fc__route_frag *existing, fc__route_frag *n
   return false;
 }
 
-fc_errno fc__router_add_route(fc_router_t *router, fc_http_method method, char *path, fc_route_handler_t handler)
+fc_errno fc__router_add_route(fc_router_t *router, fc_http_method method, char *path, fc_route_handler_fn handler, const fc_schema_t *schema)
 {
   size_t raw_frags_count = 0;
   char *raw_frags[PATH_MAX_FRAGS];
@@ -152,11 +153,14 @@ fc_errno fc__router_add_route(fc_router_t *router, fc_http_method method, char *
   if (current->handlers[method])
     return FC_ERR_ROUTE_CONFLIT;
 
-  current->handlers[method] = handler;
+  current->handlers[method] = malloc(sizeof(fc__route_handler));
+  current->handlers[method]->schema = schema;
+  current->handlers[method]->handle = handler;
+
   return FC_ERR_OK;
 }
 
-fc_errno fc__router_match_req(fc_router_t *router, fc_request_t *req, char *path, fc_route_handler_t *handler)
+fc_errno fc__router_match_req(fc_router_t *router, fc_request_t *req, char *path, fc__route_handler **handler)
 {
   size_t raw_frags_count = 0;
   char *raw_frags[PATH_MAX_FRAGS];

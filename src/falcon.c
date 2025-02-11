@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <inttypes.h>
 #include <stdarg.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -104,7 +105,7 @@ int on_body(llhttp_t *p, const char *at, size_t len);
  */
 int init_server(char *host, unsigned port);
 void match_request_handler(fc_request_t *request);
-[[nodiscard]] fc_errno add_route(fc_t *app, char *path, fc_route_handler_t handler, fc_http_method method);
+fc_errno add_route(fc_t *app, char *path, fc_route_handler_fn handler, fc_http_method method, const fc_schema_t *schema);
 
 /**
  * RESPONSE HANDLERS
@@ -135,14 +136,14 @@ fc_errno fc_init(fc_t *app)
   return FC_ERR_OK;
 }
 
-void fc_get(fc_t *app, char *path, fc_route_handler_t handler)
+void fc_get(fc_t *app, char *path, fc_route_handler_fn handler)
 {
-  assert(FC_ERR_OK == add_route(app, path, handler, FC_HTTP_GET));
+  assert(FC_ERR_OK == add_route(app, path, handler, FC_HTTP_GET, NULL));
 }
 
-void fc_post(fc_t *app, char *path, fc_route_handler_t handler)
+void fc_post(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema)
 {
-  assert(FC_ERR_OK == add_route(app, path, handler, FC_HTTP_POST));
+  assert(FC_ERR_OK == add_route(app, path, handler, FC_HTTP_POST, schema));
 }
 
 void fc_res_ok(fc_response_t *res)
@@ -189,7 +190,47 @@ fc_errno fc_req_get_param_as_int(fc_request_t *req, const char *name, int *out)
   return FC_ERR_OK;
 }
 
-int fc_listen(fc_t *app, char *host, unsigned int port, fon_listen_t cb)
+bool match_fc_to_jjson_type(fc_data_t fc_t, jjson_type jj_t)
+{
+  switch (fc_t)
+  {
+  case FC_ANY_T:
+    return true;
+  case FC_INTEGER_T:
+  case FC_FLOAT_T:
+    return JSON_NUMBER == jj_t;
+  case FC_STRING_T:
+    return JSON_STRING == jj_t;
+  case FC_JSON_T:
+    return JSON_OBJECT == jj_t;
+  case FC_ARRAY_T:
+    return JSON_ARRAY == jj_t;
+  case FC_CHAR_T:
+    return false;
+  }
+}
+
+fc_errno fc_req_bind_json(fc_request_t *req, jjson_t *json, const fc_schema_t *schema)
+{
+  enum jjson_error err = jjson_parse(json, req->body_buf.ptr, req->body_buf.len);
+  if (JJE_OK != err)
+    return FC_ERR_INVALID_JSON;
+
+  if (schema)
+  {
+    for (size_t i = 0; i < schema->nfields; ++i)
+    {
+      jjson_value *json_val = NULL;
+      jjson_get(json, schema->fields[i].name, &json_val);
+      if (!json_val || !match_fc_to_jjson_type(schema->fields[i].type, json_val->type))
+        return FC_ERR_ENTRY_NOT_FOUND;
+    }
+  }
+
+  return FC_ERR_OK;
+}
+
+int fc_listen(fc_t *app, char *host, unsigned int port, fc_on_listen cb)
 {
   int result = 0;
   init_server(host, port);
@@ -227,10 +268,6 @@ int init_server(char *host, unsigned port)
   return 0;
 }
 
-/**
- * This function is called when server has an incomming request
- *
- */
 void on_connection(uv_stream_t *server, int status)
 {
   if (status < 0)
@@ -259,19 +296,16 @@ void on_alloc_req_buf(uv_handle_t *handle, size_t size, uv_buf_t *buf)
   buf->len = size;
 }
 
-/**
- * A callback run after reading the client socket has completed
- *
- */
 void on_read_request(uv_stream_t *client, long nread, const uv_buf_t *buf)
 {
   // TODO: stop reading
   if (nread > 0)
   {
-    fc_request_t req;
-    req.handler = (uv_handle_t *)client;
-    req.buf = (fc_stringview_t){.ptr = buf->base, .len = nread};
-    parse_request(buf->base, nread, &req);
+    /* Note: ensure that 'request' does not get popped from the stack while being used */
+    fc_request_t request;
+    request.handler = (uv_handle_t *)client;
+    request.buf = (fc_stringview_t){.ptr = buf->base, .len = nread};
+    parse_request(buf->base, nread, &request);
   }
   else
   {
@@ -279,10 +313,6 @@ void on_read_request(uv_stream_t *client, long nread, const uv_buf_t *buf)
   }
 }
 
-/**
- * Parse raw buffer populating the request instance with relevant data
- *
- */
 void parse_request(char *raw_buf, size_t buf_sz, fc_request_t *request)
 {
   http_parser_glob.data = request;
@@ -296,9 +326,9 @@ void parse_request(char *raw_buf, size_t buf_sz, fc_request_t *request)
 int on_method(llhttp_t *p, const char *at, size_t len)
 {
   fc_request_t *req = (fc_request_t *)p->data;
-  if (0 == strncmp("GET", at, len))
+  if (0 == strncmp("GET", at, 3))
     req->method = FC_HTTP_GET;
-  else if (0 == strncmp("POST", at, len))
+  else if (0 == strncmp("POST", at, 4))
     req->method = FC_HTTP_POST;
   else
     return HPE_INVALID_METHOD;
@@ -319,29 +349,46 @@ int on_url(llhttp_t *p, const char *at, size_t len)
   return HPE_OK;
 }
 
-/**
- * Match an already parsed request to a user defined route to be handled
- */
 void match_request_handler(fc_request_t *request)
 {
   char *path;
   assert(FC_ERR_OK == fc_stringview_get(&path, &request->path));
 
-  fc_route_handler_t handler;
+  fc__route_handler *handler;
   if (FC_ERR_OK == fc__router_match_req(&router_glob, request, path, &handler))
   {
-    /* Note: must ensure that 'response' does not get poped while being used */
+    /* Note: ensure that 'response' does not get popped from the stack while being used */
     fc_response_t response;
-    response.status = FC_STATUS_OK; /* STATUS_OK (200) is the default status code */
+    response.status = FC_STATUS_OK;
     response.handler = request->handler;
-    handler(request, &response);
+
+    if (handler->schema)
+    {
+      jjson_t json;
+      jjson_init(&json);
+
+      fc_errno err = fc_req_bind_json(request, &json, handler->schema);
+      if (FC_ERR_OK != err)
+      {
+        /* TODO: send unprocessable entity response */
+        send_bad_req_response(request);
+        goto defer;
+      }
+
+      request->body = (void *)&json;
+    }
+
+    handler->handle(request, &response);
   }
   else
   {
     send_404_response(request);
   }
 
+defer:
   free(path);
+  if (handler->schema)
+    jjson_deinit((jjson_t *)request->body);
 }
 
 void on_write(uv_write_t *req, int status)
@@ -351,22 +398,18 @@ void on_write(uv_write_t *req, int status)
   uv_close((uv_handle_t *)req->handle, on_close_connection);
 }
 
-/**
- * A callback run after closing the client socket has completed
- *
- */
 void on_close_connection(uv_handle_t *client)
 {
   free(client);
 }
 
-[[nodiscard]] fc_errno add_route(fc_t *app, char *path, fc_route_handler_t handler, fc_http_method method)
+fc_errno add_route(fc_t *app, char *path, fc_route_handler_fn handler, fc_http_method method, const fc_schema_t *schema)
 {
   char *p;
   fc_errno err = fc_string_clone(&p, path, strnlen(path, STRING_MAX_LEN));
   if (FC_ERR_OK != err)
     return err;
-  return fc__router_add_route(&router_glob, method, p, handler);
+  return fc__router_add_route(&router_glob, method, p, handler, schema);
 }
 
 /**

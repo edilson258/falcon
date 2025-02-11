@@ -12,6 +12,7 @@ typedef enum
   FC_ERR_ROUTE_CONFLIT = 6,
   FC_ERR_ENTRY_NOT_FOUND = 7,
   FC_ERR_INVALID_ROUTE = 8,
+  FC_ERR_INVALID_JSON = 9,
 } fc_errno;
 
 #endif // !__FALCON_ERRN__

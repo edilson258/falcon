@@ -10,6 +10,12 @@ struct User
   char *password;
 };
 
+static int last_id = 1;
+int get_user_id()
+{
+  return last_id++;
+}
+
 unsigned users_count = 0;
 struct User users[1024] = {0};
 
@@ -21,18 +27,23 @@ void users_find(fc_request_t *req, fc_response_t *res);
 void users_find_by_id(fc_request_t *req, fc_response_t *res);
 void users_create(fc_request_t *req, fc_response_t *res);
 
+const fc_schema_t users_create_schema = {
+    .nfields = 2,
+    .fields = {{.name = "email", .type = FC_STRING_T}, {.name = "password", .type = FC_STRING_T}}};
+
 int main(void)
 {
   fc_t app;
   fc_init(&app);
 
-  add_user(1, "alice@test.com", "alice123");
-  add_user(2, "bob@test.com", "bob123");
-  add_user(3, "john@test.com", "john123");
+  /* mock users */
+  add_user(get_user_id(), "alice@test.com", "alice123");
+  add_user(get_user_id(), "bob@test.com", "bob123");
+  add_user(get_user_id(), "john@test.com", "john123");
 
   fc_get(&app, "/users", users_find);
   fc_get(&app, "/users/:id", users_find_by_id);
-  fc_post(&app, "/users", users_create);
+  fc_post(&app, "/users", users_create, &users_create_schema);
 
   return fc_listen(&app, "0.0.0.0", 8080, on_listen);
 }
@@ -123,6 +134,17 @@ void users_find_by_id(fc_request_t *req, fc_response_t *res)
 
 void users_create(fc_request_t *req, fc_response_t *res)
 {
+  jjson_t *json = (jjson_t *)req->body;
+
+  int id = get_user_id();
+  JJSON_GET_STRING(*json, "email", email);
+  JJSON_GET_STRING(*json, "password", password);
+  add_user(id, strdup(email), strdup(password));
+
+  jjson_t res_json;
+  jjson_init(&res_json);
+  jjson_add_number(&res_json, "id", id);
+
   fc_res_set_status(res, FC_STATUS_CREATED);
-  fc_res_ok(res);
+  fc_res_json(res, &res_json);
 }
