@@ -38,16 +38,16 @@ void on_read_request(uv_stream_t *client, long nread, const uv_buf_t *buf);
 void on_close_connection(uv_handle_t *client);
 
 // llhttp parser
-void parse_request(char *raw_buffer, size_t buffer_size, fc_request_t *request);
-int on_url(llhttp_t *p, const char *at, size_t len);
-int on_method(llhttp_t *p, const char *at, size_t len);
-int on_body(llhttp_t *p, const char *at, size_t len);
+void http_parse_request(char *raw_buffer, size_t buffer_size, fc_request_t *request);
+int http_parser_on_url(llhttp_t *p, const char *at, size_t len);
+int http_parser_on_method(llhttp_t *p, const char *at, size_t len);
+int http_parser_on_body(llhttp_t *p, const char *at, size_t len);
 
 /**
  * INTERNAL API
  */
-int init_server(char *host, unsigned port);
-void match_request_handler(fc_request_t *request);
+int fc__init_server(char *host, unsigned port);
+void fc__match_request_to_handler(fc_request_t *request);
 fc_errno fc__add_route(fc_t *app, char *path, fc_route_handler_fn handler, fc_http_method method, const fc_schema_t *schema);
 
 /**
@@ -71,9 +71,9 @@ fc_errno fc_init(fc_t *app)
 
   // init http parser
   llhttp_settings_init(&http_parser_settings_glob);
-  http_parser_settings_glob.on_url = on_url;
-  http_parser_settings_glob.on_method = on_method;
-  http_parser_settings_glob.on_body = on_body;
+  http_parser_settings_glob.on_url = http_parser_on_url;
+  http_parser_settings_glob.on_method = http_parser_on_method;
+  http_parser_settings_glob.on_body = http_parser_on_body;
   llhttp_init(&http_parser_glob, HTTP_REQUEST, &http_parser_settings_glob);
 
   return FC_ERR_OK;
@@ -169,7 +169,9 @@ fc_errno fc_req_get_param_as_int(fc_request_t *req, const char *name, int *out)
   char *out_str;
   fc_errno err = fc_req_get_param(req, name, &out_str);
   if (FC_ERR_OK != err)
+  {
     return err;
+  }
   *out = (int)strtol(out_str, NULL, 10);
   return FC_ERR_OK;
 }
@@ -198,7 +200,9 @@ fc_errno fc_req_bind_json(fc_request_t *req, jjson_t *json, const fc_schema_t *s
 {
   enum jjson_error err = jjson_parse(json, req->body_buf.ptr, req->body_buf.len);
   if (JJE_OK != err)
+  {
     return FC_ERR_INVALID_JSON;
+  }
 
   if (schema)
   {
@@ -207,7 +211,9 @@ fc_errno fc_req_bind_json(fc_request_t *req, jjson_t *json, const fc_schema_t *s
       jjson_value *json_val = NULL;
       jjson_get(json, schema->fields[i].name, &json_val);
       if (!json_val || !match_fc_to_jjson_type(schema->fields[i].type, json_val->type))
+      {
         return FC_ERR_ENTRY_NOT_FOUND;
+      }
     }
   }
 
@@ -217,7 +223,7 @@ fc_errno fc_req_bind_json(fc_request_t *req, jjson_t *json, const fc_schema_t *s
 int fc_listen(fc_t *app, char *host, unsigned int port, fc_on_listen cb)
 {
   int result = 0;
-  init_server(host, port);
+  fc__init_server(host, port);
 
   result = uv_tcp_bind(&server_sock_glob, (const struct sockaddr *)&server_addr_glob, 0);
   if (result)
@@ -234,7 +240,9 @@ int fc_listen(fc_t *app, char *host, unsigned int port, fc_on_listen cb)
   }
 
   if (cb)
+  {
     cb();
+  }
 
   return uv_run(main_loop_glob, UV_RUN_DEFAULT);
 }
@@ -243,7 +251,7 @@ int fc_listen(fc_t *app, char *host, unsigned int port, fc_on_listen cb)
  * INTERNAL API
  */
 
-int init_server(char *host, unsigned port)
+int fc__init_server(char *host, unsigned port)
 {
   main_loop_glob = uv_default_loop();
   uv_tcp_init(main_loop_glob, &server_sock_glob);
@@ -289,7 +297,7 @@ void on_read_request(uv_stream_t *client, long nread, const uv_buf_t *buf)
     fc_request_t request;
     request.handler = (uv_handle_t *)client;
     request.buf = (fc_stringview_t){.ptr = buf->base, .len = nread};
-    parse_request(buf->base, nread, &request);
+    http_parse_request(buf->base, nread, &request);
   }
   else
   {
@@ -297,43 +305,51 @@ void on_read_request(uv_stream_t *client, long nread, const uv_buf_t *buf)
   }
 }
 
-void parse_request(char *raw_buf, size_t buf_sz, fc_request_t *request)
+void http_parse_request(char *raw_buf, size_t buf_sz, fc_request_t *request)
 {
   http_parser_glob.data = request;
   enum llhttp_errno parse_err = llhttp_execute(&http_parser_glob, raw_buf, buf_sz);
   llhttp_reset(&http_parser_glob);
   if (parse_err != HPE_OK)
+  {
     return send_bad_req_response(request);
-  match_request_handler(request);
+  }
+  fc__match_request_to_handler(request);
 }
 
-int on_method(llhttp_t *p, const char *at, size_t len)
+int http_parser_on_method(llhttp_t *p, const char *at, size_t len)
 {
   fc_request_t *req = (fc_request_t *)p->data;
   if (0 == strncmp("GET", at, 3))
+  {
     req->method = FC_HTTP_GET;
+  }
   else if (0 == strncmp("POST", at, 4))
+  {
     req->method = FC_HTTP_POST;
+  }
   else
+  {
     return HPE_INVALID_METHOD;
+  }
   return HPE_OK;
 }
 
-int on_body(llhttp_t *p, const char *at, size_t len)
+int http_parser_on_body(llhttp_t *p, const char *at, size_t len)
 {
   fc_request_t *req = (fc_request_t *)p->data;
   req->body_buf = (fc_stringview_t){.ptr = at, .len = len};
   return HPE_OK;
 }
 
-int on_url(llhttp_t *p, const char *at, size_t len)
+int http_parser_on_url(llhttp_t *p, const char *at, size_t len)
 {
   fc_request_t *req = (fc_request_t *)p->data;
   req->path = (fc_stringview_t){.ptr = at, .len = len};
   return HPE_OK;
 }
 
-void match_request_handler(fc_request_t *request)
+void fc__match_request_to_handler(fc_request_t *request)
 {
   char *path;
   assert(FC_ERR_OK == fc_stringview_get(&path, &request->path));
@@ -373,7 +389,9 @@ defer:
   free(path);
   free((void *)request->buf.ptr);
   if (handler->schema)
+  {
     jjson_deinit((jjson_t *)request->body);
+  }
 }
 
 void on_write(uv_write_t *req, int status)
@@ -393,7 +411,9 @@ fc_errno fc__add_route(fc_t *app, char *path, fc_route_handler_fn handler, fc_ht
   char *p;
   fc_errno err = fc_string_clone(&p, path, strnlen(path, FC__STRING_MAX_LEN));
   if (FC_ERR_OK != err)
+  {
     return err;
+  }
   return fc__router_add_route(&app_router_glob, method, p, handler, schema);
 }
 

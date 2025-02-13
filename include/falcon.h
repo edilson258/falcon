@@ -11,7 +11,7 @@
 
 #define FC__REQ_PARAM_MAX_LEN 100
 
-typedef struct fc__req_param_t
+typedef struct
 {
   fc_stringview_t name;
   fc_stringview_t value;
