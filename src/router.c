@@ -5,7 +5,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/param.h>
 #include <time.h>
 
 #include <falcon.h>
@@ -42,7 +41,9 @@ fc_errno fc__frag_init(const char *label, fc__route_frag_t type, fc__route_frag 
 void fc__frag_deinit(fc__route_frag *frag)
 {
   if (!frag)
+  {
     return;
+  }
   free((void *)frag->label);
   fc__frag_deinit(frag->next);
   fc__frag_deinit(frag->children);
@@ -63,14 +64,18 @@ fc_errno fc__normalize_path_inplace(char **input)
   {
     char c = (char)tolower((*input)[read++]);
     if (isspace(c) || (c == '/' && prev_slash))
+    {
       continue;
+    }
     prev_slash = c == '/' ? true : false;
     (*input)[write++] = c;
   }
 
   /* Trim trailing slash */
   if (write > 1 && (*input)[write - 1] == '/')
+  {
     write--;
+  }
   (*input)[write] = '\0';
 
   return FC_ERR_OK;
@@ -80,7 +85,9 @@ fc_errno fc__split_path(char *path, size_t *count, char *raw_frags[PATH_MAX_FRAG
 {
   fc_errno err = fc__normalize_path_inplace(&path);
   if (FC_ERR_OK != err)
+  {
     return err;
+  }
 
   *count = 0;
   char *token = strtok(path, "/");
@@ -88,7 +95,9 @@ fc_errno fc__split_path(char *path, size_t *count, char *raw_frags[PATH_MAX_FRAG
   while (token)
   {
     if (*count >= PATH_MAX_FRAGS)
+    {
       return FC_ERR_STRING_TOO_LONG;
+    }
     raw_frags[*count] = token;
     (*count)++;
     token = strtok(NULL, "/");
@@ -101,35 +110,45 @@ fc_errno fc__split_path(char *path, size_t *count, char *raw_frags[PATH_MAX_FRAG
 static bool fc__check_route_conflict(fc__route_frag *existing, fc__route_frag *new_frag)
 {
   if (existing->type == FC__ROUTE_FRAG_STATIC && new_frag->type == FC__ROUTE_FRAG_STATIC)
+  {
     return strncmp(existing->label, new_frag->label, STRING_MAX_LEN) == 0;
+  }
 
   if (existing->type != FC__ROUTE_FRAG_STATIC && new_frag->type != FC__ROUTE_FRAG_STATIC)
+  {
     return true;
+  }
 
   return false;
 }
 
 fc_errno fc__router_add_route(fc_router_t *router, fc_http_method method, char *path, fc_route_handler_fn handler, const fc_schema_t *schema)
 {
-  size_t raw_frags_count = 0;
-  char *raw_frags[PATH_MAX_FRAGS];
-  fc_errno err = fc__split_path(path, &raw_frags_count, (char **)raw_frags);
+  size_t frag_count = 0;
+  char *frags[PATH_MAX_FRAGS];
+  fc_errno err = fc__split_path(path, &frag_count, (char **)frags);
   if (FC_ERR_OK != err)
+  {
     return err;
+  }
 
   bool wildcard_seen = false;
   fc__route_frag *current = router->root;
 
-  for (size_t i = 0; i < raw_frags_count; i++)
+  for (size_t i = 0; i < frag_count; ++i)
   {
     fc__route_frag_t type = FC__ROUTE_FRAG_STATIC;
-    const char *raw_frag = raw_frags[i];
+    const char *raw_frag = frags[i];
 
     if (wildcard_seen)
+    {
       return FC_ERR_INVALID_ROUTE;
+    }
 
     if (raw_frag[0] == ':')
+    {
       type = FC__ROUTE_FRAG_PARAM;
+    }
     else if (strncmp(raw_frag, "**", MIN(2, strnlen(raw_frag, STRING_MAX_LEN))) == 0)
     {
       type = FC__ROUTE_FRAG_WILDCARD;
@@ -141,7 +160,9 @@ fc_errno fc__router_add_route(fc_router_t *router, fc_http_method method, char *
     while (*child_ptr)
     {
       if (fc__check_route_conflict(*child_ptr, current))
+      {
         return FC_ERR_ROUTE_CONFLIT;
+      }
 
       if ((*child_ptr)->type == type && (type != FC__ROUTE_FRAG_STATIC || strncmp((*child_ptr)->label, raw_frag, STRING_MAX_LEN) == 0))
       {
@@ -162,7 +183,9 @@ fc_errno fc__router_add_route(fc_router_t *router, fc_http_method method, char *
   }
 
   if (current->handlers[method])
+  {
     return FC_ERR_ROUTE_CONFLIT;
+  }
 
   current->handlers[method] = malloc(sizeof(fc__route_handler));
   current->handlers[method]->schema = schema;
@@ -173,15 +196,17 @@ fc_errno fc__router_add_route(fc_router_t *router, fc_http_method method, char *
 
 fc_errno fc__router_match_req(fc_router_t *router, fc_request_t *req, char *path, fc__route_handler **handler)
 {
-  size_t raw_frags_count = 0;
-  char *raw_frags[PATH_MAX_FRAGS];
-  fc_errno err = fc__split_path(path, &raw_frags_count, (char **)raw_frags);
+  size_t frag_count = 0;
+  char *frags[PATH_MAX_FRAGS];
+  fc_errno err = fc__split_path(path, &frag_count, (char **)frags);
   if (FC_ERR_OK != err)
+  {
     return err;
+  }
 
   fc__route_frag *current = router->root;
 
-  for (size_t i = 0; i < raw_frags_count; i++)
+  for (size_t i = 0; i < frag_count; i++)
   {
     fc__route_frag *child = current->children;
     bool found = false;
@@ -191,14 +216,14 @@ fc_errno fc__router_match_req(fc_router_t *router, fc_request_t *req, char *path
       switch (child->type)
       {
       case FC__ROUTE_FRAG_STATIC:
-        found = (strncmp(child->label, raw_frags[i], STRING_MAX_LEN) == 0);
+        found = (strncmp(child->label, frags[i], STRING_MAX_LEN) == 0);
         break;
       case FC__ROUTE_FRAG_PARAM:
         found = true;
         if (req->params.nparams < FC__REQ_PARAM_MAX_LEN) /* Ignore params if too many */
         {
           fc_stringview_t name = {.ptr = child->label + 1, .len = strnlen(child->label + 1, STRING_MAX_LEN)} /* '+1' to skip ':' */;
-          fc_stringview_t value = {.ptr = raw_frags[i], .len = strnlen(raw_frags[i], STRING_MAX_LEN)};
+          fc_stringview_t value = {.ptr = frags[i], .len = strnlen(frags[i], STRING_MAX_LEN)};
           req->params.params[req->params.nparams++] = (fc__req_param_t){.name = name, .value = value};
         }
         break;
@@ -217,7 +242,9 @@ fc_errno fc__router_match_req(fc_router_t *router, fc_request_t *req, char *path
     }
 
     if (!found)
+    {
       return FC_ERR_ENTRY_NOT_FOUND;
+    }
   }
 
   *handler = current->handlers[req->method];
