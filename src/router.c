@@ -8,9 +8,11 @@
 #include <time.h>
 
 #include <falcon.h>
+#include <falcon/consts.h>
 #include <falcon/errn.h>
 #include <falcon/router.h>
 #include <falcon/stringview.h>
+#include <falcon/utils.h>
 
 #define PATH_MAX_FRAGS 100
 
@@ -111,7 +113,7 @@ static bool fc__check_route_conflict(fc__route_frag *existing, fc__route_frag *n
 {
   if (existing->type == FC__ROUTE_FRAG_STATIC && new_frag->type == FC__ROUTE_FRAG_STATIC)
   {
-    return strncmp(existing->label, new_frag->label, STRING_MAX_LEN) == 0;
+    return strncmp(existing->label, new_frag->label, FC__STRING_MAX_LEN) == 0;
   }
 
   if (existing->type != FC__ROUTE_FRAG_STATIC && new_frag->type != FC__ROUTE_FRAG_STATIC)
@@ -149,7 +151,7 @@ fc_errno fc__router_add_route(fc_router_t *router, fc_http_method method, char *
     {
       type = FC__ROUTE_FRAG_PARAM;
     }
-    else if (strncmp(raw_frag, "**", MIN(2, strnlen(raw_frag, STRING_MAX_LEN))) == 0)
+    else if (strncmp(raw_frag, "**", MIN(2, strnlen(raw_frag, FC__STRING_MAX_LEN))) == 0)
     {
       type = FC__ROUTE_FRAG_WILDCARD;
       wildcard_seen = true;
@@ -164,7 +166,7 @@ fc_errno fc__router_add_route(fc_router_t *router, fc_http_method method, char *
         return FC_ERR_ROUTE_CONFLIT;
       }
 
-      if ((*child_ptr)->type == type && (type != FC__ROUTE_FRAG_STATIC || strncmp((*child_ptr)->label, raw_frag, STRING_MAX_LEN) == 0))
+      if ((*child_ptr)->type == type && (type != FC__ROUTE_FRAG_STATIC || strncmp((*child_ptr)->label, raw_frag, FC__STRING_MAX_LEN) == 0))
       {
         current = *child_ptr;
         goto next_fragment;
@@ -216,14 +218,14 @@ fc_errno fc__router_match_req(fc_router_t *router, fc_request_t *req, char *path
       switch (child->type)
       {
       case FC__ROUTE_FRAG_STATIC:
-        found = (strncmp(child->label, frags[i], STRING_MAX_LEN) == 0);
+        found = (strncmp(child->label, frags[i], FC__STRING_MAX_LEN) == 0);
         break;
       case FC__ROUTE_FRAG_PARAM:
         found = true;
         if (req->params.nparams < FC__REQ_PARAM_MAX_LEN) /* Ignore params if too many */
         {
-          fc_stringview_t name = {.ptr = child->label + 1, .len = strnlen(child->label + 1, STRING_MAX_LEN)} /* '+1' to skip ':' */;
-          fc_stringview_t value = {.ptr = frags[i], .len = strnlen(frags[i], STRING_MAX_LEN)};
+          fc_stringview_t name = {.ptr = child->label + 1, .len = strnlen(child->label + 1, FC__STRING_MAX_LEN)} /* '+1' to skip ':' */;
+          fc_stringview_t value = {.ptr = frags[i], .len = strnlen(frags[i], FC__STRING_MAX_LEN)};
           req->params.params[req->params.nparams++] = (fc__req_param_t){.name = name, .value = value};
         }
         break;

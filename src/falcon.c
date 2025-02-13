@@ -16,74 +16,17 @@
 #include <uv.h>
 
 #include <falcon.h>
+#include <falcon/consts.h>
 #include <falcon/errn.h>
 #include <falcon/router.h>
 #include <falcon/stringview.h>
-
-const unsigned SERVER_BACKLOG = 128;
-
-char CONTENT_TYPE_PLAIN[] = "text/plain";
-char CONTENT_TYPE_HTML[] = "text/html";
-char CONTENT_TYPE_JSON[] = "application/json";
-
-char OK_RESPONSE[] = "HTTP/1.1 200 OK\r\n"
-                     "Server: Falcon\r\n"
-                     "Content-Type: text/plain\r\n"
-                     "Content-Length: 2\r\n"
-                     "\r\n"
-                     "Ok";
-
-char JSON_RESPONSE_TEMPLATE[] = "HTTP/1.1 200 OK\r\n"
-                                "Server: Falcon\r\n"
-                                "Content-Type: application/json\r\n"
-                                "Content-Length: %zu\r\n"
-                                "\r\n"
-                                "%s";
-
-char RESPONSE_TEMPLATE[] = "HTTP/1.1 %d %s\r\n"
-                           "Server: Falcon\r\n"
-                           "Content-Type: %s\r\n"
-                           "Content-Length: %zu\r\n"
-                           "\r\n"
-                           "%s";
-
-char HTTP_RESPONSE_HEADER_TEMPLATE[] = "HTTP/1.1 %d %s\r\n"
-                                       "Server: Falcon\r\n"
-                                       "Content-Type: %s\r\n"
-                                       "Content-Length: %zu\r\n"
-                                       "\r\n";
-
-char HTML_TEMPLATE[] = "<!DOCTYPE html>\n"
-                       "<html lang=\"en\">\n"
-                       "<head>\n"
-                       "  <meta charset=\"UTF-8\">\n"
-                       "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n"
-                       "  <title>%s</title>\n"
-                       "</head>\n"
-                       "<body>\n"
-                       "  %s\n"
-                       "</body>\n"
-                       "</html>\n";
-
-#define FHTTP_METHOD_STR(method)       \
-  ((method) == FC_HTTP_GET    ? "GET"  \
-   : (method) == FC_HTTP_POST ? "POST" \
-                              : "Unkown HTTP method")
-
-#define FHTTP_STATUS_STR(status)                     \
-  ((status) == FC_STATUS_OK          ? "OK"          \
-   : (status) == FC_STATUS_CREATED   ? "Created"     \
-   : (status) == FC_STATUS_BAD_REQ   ? "Bad request" \
-   : (status) == FC_STATUS_NOT_FOUND ? "Not found"   \
-                                     : "Unkown HTTP status code")
+#include <falcon/templates.h>
 
 // Globals
 uv_loop_t *main_loop_glob;
 uv_tcp_t server_sock_glob;
 struct sockaddr_in server_addr_glob;
-
-fc_router_t router_glob;
-
+fc_router_t app_router_glob;
 llhttp_t http_parser_glob;
 llhttp_settings_t http_parser_settings_glob;
 
@@ -124,7 +67,7 @@ void send_http_response(uv_handle_t *handler, fc_http_status status, char *cont_
 fc_errno fc_init(fc_t *app)
 {
   // init app main router
-  fc__router_init(&router_glob);
+  fc__router_init(&app_router_glob);
 
   // init http parser
   llhttp_settings_init(&http_parser_settings_glob);
@@ -160,7 +103,7 @@ void fc_res_json(fc_response_t *res, jjson_t *json)
   assert(err == JJE_OK);
   size_t body_len = strlen(body);
   send_json_response(res, body, body_len);
-  free(body);
+  // TODO: free body
 }
 
 void fc_res_set_status(fc_response_t *res, fc_http_status status)
@@ -243,7 +186,7 @@ int fc_listen(fc_t *app, char *host, unsigned int port, fc_on_listen cb)
     return -1;
   }
 
-  result = uv_listen((uv_stream_t *)&server_sock_glob, SERVER_BACKLOG, on_connection);
+  result = uv_listen((uv_stream_t *)&server_sock_glob, FC__SERVER_BACKLOG, on_connection);
   if (result)
   {
     fprintf(stderr, "Listen failed, %s\n", uv_strerror(result));
@@ -356,7 +299,7 @@ void match_request_handler(fc_request_t *request)
   assert(FC_ERR_OK == fc_stringview_get(&path, &request->path));
 
   fc__route_handler *handler;
-  if (FC_ERR_OK == fc__router_match_req(&router_glob, request, path, &handler))
+  if (FC_ERR_OK == fc__router_match_req(&app_router_glob, request, path, &handler))
   {
     /* Note: ensure that 'response' does not get popped from the stack while being used */
     fc_response_t response;
@@ -408,10 +351,10 @@ void on_close_connection(uv_handle_t *client)
 fc_errno add_route(fc_t *app, char *path, fc_route_handler_fn handler, fc_http_method method, const fc_schema_t *schema)
 {
   char *p;
-  fc_errno err = fc_string_clone(&p, path, strnlen(path, STRING_MAX_LEN));
+  fc_errno err = fc_string_clone(&p, path, strnlen(path, FC__STRING_MAX_LEN));
   if (FC_ERR_OK != err)
     return err;
-  return fc__router_add_route(&router_glob, method, p, handler, schema);
+  return fc__router_add_route(&app_router_glob, method, p, handler, schema);
 }
 
 /**
@@ -424,7 +367,7 @@ void send_404_response(fc_request_t *request)
   assert(FC_ERR_OK == fc_stringview_get(&path, &request->path));
 
   char *title = "Not found";
-  char *method_str = FHTTP_METHOD_STR(request->method);
+  char *method_str = fc__http_method_str(request->method);
   size_t message_len = snprintf(NULL, 0, "Cannot %s %s", method_str, path) + 1;
   char message[message_len];
   snprintf(message, message_len, "Cannot %s %s", method_str, path);
@@ -437,7 +380,7 @@ void send_bad_req_response(fc_request_t *request)
 {
   char *title = "Bad request";
   char *message = "Bad request";
-  fc_http_status status = FC_STATUS_BAD_REQ;
+  fc_http_status status = FC_STATUS_BAD_REQUEST;
   send_html_response(request->handler, status, title, message);
 }
 
@@ -456,7 +399,7 @@ void send_json_response(fc_response_t *res, char *pload, size_t pload_len)
 
 void send_http_response(uv_handle_t *handler, fc_http_status status, char *cont_type, char *body, size_t body_len)
 {
-  char *status_str = FHTTP_STATUS_STR(status);
+  char *status_str = fc__http_status_str(status);
   size_t head_len = snprintf(NULL, 0, HTTP_RESPONSE_HEADER_TEMPLATE, status, status_str, cont_type, body_len - 1) + 1;
   char head[head_len];
   snprintf(head, head_len, HTTP_RESPONSE_HEADER_TEMPLATE, status, status_str, cont_type, body_len - 1);

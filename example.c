@@ -134,8 +134,6 @@ void users_find_by_id(fc_request_t *req, fc_response_t *res)
   fc_res_json(res, &json);
 
   jjson_deinit(&json);
-
-  exit(0);
 }
 
 void users_create(fc_request_t *req, fc_response_t *res)

@@ -1,12 +1,11 @@
 #ifndef __FALCON_STRING_VIEW__
 #define __FALCON_STRING_VIEW__
 
-#include <falcon/errn.h>
-
 #include <stdbool.h>
 #include <stddef.h>
 
-#define STRING_MAX_LEN (32 * 1024)
+#include <falcon/errn.h>
+#include <falcon/utils.h>
 
 typedef struct
 {

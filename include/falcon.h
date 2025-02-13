@@ -1,29 +1,13 @@
-#ifndef __FALCON_HTTP__
-#define __FALCON_HTTP__
+#ifndef __FALCON__
+#define __FALCON__
 
 #include <falcon/errn.h>
+#include <falcon/http.h>
 #include <falcon/stringview.h>
 
 #include <jack.h>
 #include <stddef.h>
 #include <uv.h>
-
-typedef enum
-{
-  FC_HTTP_GET,
-  FC_HTTP_POST,
-
-  /* Must be the last one */
-  FC__HTTP_METHODS_COUNT
-} fc_http_method;
-
-typedef enum
-{
-  FC_STATUS_OK = 200,
-  FC_STATUS_CREATED = 201,
-  FC_STATUS_BAD_REQ = 400,
-  FC_STATUS_NOT_FOUND = 404,
-} fc_http_status;
 
 #define FC__REQ_PARAM_MAX_LEN 100
 
@@ -102,4 +86,4 @@ fc_errno fc_req_get_param(fc_request_t *req, const char *name, char **out);
 fc_errno fc_req_get_param_as_int(fc_request_t *req, const char *name, int *out);
 fc_errno fc_req_bind_json(fc_request_t *req, jjson_t *json, const fc_schema_t *schema);
 
-#endif // __FALCON_HTTP__
+#endif // !__FALCON__

@@ -1,0 +1,7 @@
+#ifndef __FALCON_CONSTANTS__
+#define __FALCON_CONSTANTS__
+
+#define FC__SERVER_BACKLOG 10000
+#define FC__STRING_MAX_LEN (32 * 1024)
+
+#endif // !__FALCON_CONSTANTS__
