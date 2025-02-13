@@ -77,6 +77,10 @@ fc_errno fc_init(fc_t *app);
 
 void fc_get(fc_t *app, char *path, fc_route_handler_fn handler);
 void fc_post(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
+void fc_put(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
+void fc_patch(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
+void fc_delete(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
+
 void fc_res_ok(fc_response_t *res);
 void fc_res_set_status(fc_response_t *res, fc_http_status status);
 void fc_res_json(fc_response_t *res, jjson_t *json);

@@ -7,7 +7,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <termios.h>
 
 #define JACK_IMPLEMENTATION
 #include <jack.h>
@@ -18,6 +17,7 @@
 #include <falcon.h>
 #include <falcon/consts.h>
 #include <falcon/errn.h>
+#include <falcon/http.h>
 #include <falcon/router.h>
 #include <falcon/stringview.h>
 #include <falcon/templates.h>
@@ -48,7 +48,7 @@ int on_body(llhttp_t *p, const char *at, size_t len);
  */
 int init_server(char *host, unsigned port);
 void match_request_handler(fc_request_t *request);
-fc_errno add_route(fc_t *app, char *path, fc_route_handler_fn handler, fc_http_method method, const fc_schema_t *schema);
+fc_errno fc__add_route(fc_t *app, char *path, fc_route_handler_fn handler, fc_http_method method, const fc_schema_t *schema);
 
 /**
  * RESPONSE HANDLERS
@@ -81,12 +81,52 @@ fc_errno fc_init(fc_t *app)
 
 void fc_get(fc_t *app, char *path, fc_route_handler_fn handler)
 {
-  assert(FC_ERR_OK == add_route(app, path, handler, FC_HTTP_GET, NULL));
+  fc_errno err = fc__add_route(app, path, handler, FC_HTTP_GET, NULL);
+  if (FC_ERR_OK != err)
+  {
+    fprintf(stderr, "[FALCON ERROR]: Failed to add path (%s) to the router\n", path);
+    exit(1);
+  }
 }
 
 void fc_post(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema)
 {
-  assert(FC_ERR_OK == add_route(app, path, handler, FC_HTTP_POST, schema));
+  fc_errno err = fc__add_route(app, path, handler, FC_HTTP_POST, schema);
+  if (FC_ERR_OK != err)
+  {
+    fprintf(stderr, "[FALCON ERROR]: Failed to add path (%s) to the router\n", path);
+    exit(1);
+  }
+}
+
+void fc_put(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema)
+{
+  fc_errno err = fc__add_route(app, path, handler, FC_HTTP_POST, schema);
+  if (FC_ERR_OK != err)
+  {
+    fprintf(stderr, "[FALCON ERROR]: Failed to add path (%s) to the router\n", path);
+    exit(1);
+  }
+}
+
+void fc_patch(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema)
+{
+  fc_errno err = fc__add_route(app, path, handler, FC_HTTP_POST, schema);
+  if (FC_ERR_OK != err)
+  {
+    fprintf(stderr, "[FALCON ERROR]: Failed to add path (%s) to the router\n", path);
+    exit(1);
+  }
+}
+
+void fc_delete(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema)
+{
+  fc_errno err = fc__add_route(app, path, handler, FC_HTTP_POST, schema);
+  if (FC_ERR_OK != err)
+  {
+    fprintf(stderr, "[FALCON ERROR]: Failed to add path (%s) to the router\n", path);
+    exit(1);
+  }
 }
 
 void fc_res_ok(fc_response_t *res)
@@ -348,7 +388,7 @@ void on_close_connection(uv_handle_t *client)
   free(client);
 }
 
-fc_errno add_route(fc_t *app, char *path, fc_route_handler_fn handler, fc_http_method method, const fc_schema_t *schema)
+fc_errno fc__add_route(fc_t *app, char *path, fc_route_handler_fn handler, fc_http_method method, const fc_schema_t *schema)
 {
   char *p;
   fc_errno err = fc_string_clone(&p, path, strnlen(path, FC__STRING_MAX_LEN));
