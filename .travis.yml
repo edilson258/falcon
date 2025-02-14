@@ -1,0 +1,14 @@
+language: c
+
+compiler:
+  - gcc
+  - clang
+
+before_install:
+  - sudo apt update
+  - sudo apt install -y cmake ninja-build
+
+script:
+  - cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+  - cmake --build build
+  - ctest --test-dir build/tests --output-on-failure
