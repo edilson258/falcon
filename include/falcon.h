@@ -10,6 +10,7 @@
 #include <uv.h>
 
 #define FC__REQ_PARAM_MAX_LEN 100
+#define FC__REQ_HEADS_MAX_LEN 100
 
 typedef struct
 {
@@ -25,12 +26,25 @@ typedef struct fc__req_params
 
 typedef struct
 {
+  fc_stringview_t name;
+  fc_stringview_t value;
+} fc_req_header;
+
+typedef struct
+{
+  size_t nheads;
+  fc_req_header heads[FC__REQ_HEADS_MAX_LEN];
+} fc_req_headers;
+
+typedef struct
+{
   fc_stringview_t buf;
   fc_stringview_t path;
   fc_stringview_t body_buf;
   void *body;
   fc_http_method method;
   uv_handle_t *handler;
+  fc_req_headers headers;
   fc__req_params params;
 } fc_request_t;
 
@@ -89,5 +103,6 @@ int fc_listen(fc_t *app, char *host, unsigned int port, fc_on_listen cb);
 fc_errno fc_req_get_param(fc_request_t *req, const char *name, char **out);
 fc_errno fc_req_get_param_as_int(fc_request_t *req, const char *name, int *out);
 fc_errno fc_req_bind_json(fc_request_t *req, jjson_t *json, const fc_schema_t *schema);
+fc_errno fc_req_get_header(fc_request_t *req, const char *name, char **out);
 
 #endif // !__FALCON__

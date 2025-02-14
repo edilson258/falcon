@@ -42,6 +42,8 @@ void http_parse_request(char *raw_buffer, size_t buffer_size, fc_request_t *requ
 int http_parser_on_url(llhttp_t *p, const char *at, size_t len);
 int http_parser_on_method(llhttp_t *p, const char *at, size_t len);
 int http_parser_on_body(llhttp_t *p, const char *at, size_t len);
+int http_parser_on_header_field(llhttp_t *p, const char *at, size_t len);
+int http_parser_on_header_value(llhttp_t *p, const char *at, size_t len);
 
 /**
  * INTERNAL API
@@ -74,6 +76,8 @@ fc_errno fc_init(fc_t *app)
   http_parser_settings_glob.on_url = http_parser_on_url;
   http_parser_settings_glob.on_method = http_parser_on_method;
   http_parser_settings_glob.on_body = http_parser_on_body;
+  http_parser_settings_glob.on_header_field = http_parser_on_header_field;
+  http_parser_settings_glob.on_header_value = http_parser_on_header_value;
   llhttp_init(&http_parser_glob, HTTP_REQUEST, &http_parser_settings_glob);
 
   return FC_ERR_OK;
@@ -174,6 +178,19 @@ fc_errno fc_req_get_param_as_int(fc_request_t *req, const char *name, int *out)
   }
   *out = (int)strtol(out_str, NULL, 10);
   return FC_ERR_OK;
+}
+
+fc_errno fc_req_get_header(fc_request_t *req, const char *name, char **out)
+{
+  for (size_t i = 0; i < req->headers.nheads; ++i)
+  {
+    if (strncmp(name, req->headers.heads[i].name.ptr, req->headers.heads[i].name.len) == 0)
+    {
+      fc_stringview_get(out, &req->headers.heads[i].value);
+      return FC_ERR_OK;
+    }
+  }
+  return FC_ERR_ENTRY_NOT_FOUND;
 }
 
 bool match_fc_to_jjson_type(fc_data_t fc_t, jjson_type jj_t)
@@ -297,6 +314,8 @@ void on_read_request(uv_stream_t *client, long nread, const uv_buf_t *buf)
     fc_request_t request;
     request.handler = (uv_handle_t *)client;
     request.buf = (fc_stringview_t){.ptr = buf->base, .len = nread};
+    request.headers.nheads = 0;
+    request.params.nparams = 0;
     http_parse_request(buf->base, nread, &request);
   }
   else
@@ -346,6 +365,24 @@ int http_parser_on_url(llhttp_t *p, const char *at, size_t len)
 {
   fc_request_t *req = (fc_request_t *)p->data;
   req->path = (fc_stringview_t){.ptr = at, .len = len};
+  return HPE_OK;
+}
+
+int http_parser_on_header_field(llhttp_t *p, const char *at, size_t len)
+{
+  fc_request_t *req = (fc_request_t *)p->data;
+  if (req->headers.nheads >= FC__REQ_HEADS_MAX_LEN)
+  {
+    return FC_ERR_LIMIT_EXCEEDED;
+  }
+  req->headers.heads[req->headers.nheads].name = (fc_stringview_t){.ptr = at, .len = len};
+  return HPE_OK;
+}
+
+int http_parser_on_header_value(llhttp_t *p, const char *at, size_t len)
+{
+  fc_request_t *req = (fc_request_t *)p->data;
+  req->headers.heads[req->headers.nheads++].value = (fc_stringview_t){.ptr = at, .len = len};
   return HPE_OK;
 }
 
