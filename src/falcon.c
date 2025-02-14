@@ -79,9 +79,9 @@ fc_errno fc_init(fc_t *app)
   return FC_ERR_OK;
 }
 
-void fc_get(fc_t *app, char *path, fc_route_handler_fn handler)
+void fc_get(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema)
 {
-  fc_errno err = fc__add_route(app, path, handler, FC_HTTP_GET, NULL);
+  fc_errno err = fc__add_route(app, path, handler, FC_HTTP_GET, schema);
   if (FC_ERR_OK != err)
   {
     fprintf(stderr, "[FALCON ERROR]: Failed to add path (%s) to the router\n", path);
@@ -228,14 +228,14 @@ int fc_listen(fc_t *app, char *host, unsigned int port, fc_on_listen cb)
   result = uv_tcp_bind(&server_sock_glob, (const struct sockaddr *)&server_addr_glob, 0);
   if (result)
   {
-    fprintf(stderr, "Bind failed, %s\n", uv_strerror(result));
+    fprintf(stderr, "[FALCON ERROR]: Failed to bind at %s:%u, %s\n", host, port, uv_strerror(result));
     return -1;
   }
 
   result = uv_listen((uv_stream_t *)&server_sock_glob, FC__SERVER_BACKLOG, on_connection);
   if (result)
   {
-    fprintf(stderr, "Listen failed, %s\n", uv_strerror(result));
+    fprintf(stderr, "[FALCON ERROR]: Failed to listen at %s:%u, %s\n", host, port, uv_strerror(result));
     return -1;
   }
 
@@ -264,7 +264,7 @@ void on_connection(uv_stream_t *server, int status)
 {
   if (status < 0)
   {
-    fprintf(stderr, "Failed on new connection, %s\n", uv_strerror(status));
+    fprintf(stderr, "[FALCON ERROR]: Failed to accept new connection, %s\n", uv_strerror(status));
     return;
   }
 
@@ -275,7 +275,7 @@ void on_connection(uv_stream_t *server, int status)
   int result = uv_accept(server, (uv_stream_t *)client);
   if (result != 0)
   {
-    fprintf(stderr, "Accept failed, %s\n", uv_strerror(result));
+    fprintf(stderr, "[FALCON ERROR]: Failed to accept new connection, %s\n", uv_strerror(result));
     return;
   }
 

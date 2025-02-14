@@ -75,7 +75,7 @@ typedef void (*fc_on_listen)();
 
 fc_errno fc_init(fc_t *app);
 
-void fc_get(fc_t *app, char *path, fc_route_handler_fn handler);
+void fc_get(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
 void fc_post(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
 void fc_put(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
 void fc_patch(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
