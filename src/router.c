@@ -14,14 +14,6 @@
 #include <falcon/stringview.h>
 #include <falcon/utils.h>
 
-#define PATH_MAX_FRAGS 100
-
-/* Internal Functions */
-static fc_errno fc__frag_init(const char *label, fc__route_frag_t type, fc__route_frag *frag);
-static fc_errno fc__normalize_path_inplace(char **input);
-static fc_errno fc__split_path(char *path, size_t *count, char *raw_frags[PATH_MAX_FRAGS]);
-static bool fc__check_route_conflict(fc__route_frag *existing, fc__route_frag *new_frag);
-
 /* Router Initialization */
 fc_errno fc__router_init(fc_router_t *router)
 {
@@ -109,7 +101,7 @@ fc_errno fc__split_path(char *path, size_t *count, char *raw_frags[PATH_MAX_FRAG
 }
 
 /* Route Conflict Detection */
-static bool fc__check_route_conflict(fc__route_frag *existing, fc__route_frag *new_frag)
+bool fc__check_route_conflict(fc__route_frag *existing, fc__route_frag *new_frag)
 {
   if (existing->type == FC__ROUTE_FRAG_STATIC && new_frag->type == FC__ROUTE_FRAG_STATIC)
   {
