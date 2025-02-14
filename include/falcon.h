@@ -7,7 +7,6 @@
 
 #include <jack.h>
 #include <stddef.h>
-#include <uv.h>
 
 #define FC__REQ_PARAM_MAX_LEN 100
 #define FC__REQ_HEADS_MAX_LEN 100
@@ -43,14 +42,14 @@ typedef struct
   fc_stringview_t body_buf;
   void *body;
   fc_http_method method;
-  uv_handle_t *handler;
+  struct uv_handle_t *handler;
   fc_req_headers headers;
   fc__req_params params;
 } fc_request_t;
 
 typedef struct
 {
-  uv_handle_t *handler;
+  struct uv_handle_t *handler;
   fc_http_status status;
 } fc_response_t;
 
@@ -94,10 +93,16 @@ void fc_post(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema
 void fc_put(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
 void fc_patch(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
 void fc_delete(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
+void fc_trace(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
+void fc_connect(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
+void fc_options(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
+void fc_head(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
 
 void fc_res_ok(fc_response_t *res);
 void fc_res_set_status(fc_response_t *res, fc_http_status status);
 void fc_res_json(fc_response_t *res, jjson_t *json);
+fc_errno fc_res_sendfile(fc_response_t *res, const char *path);
+
 int fc_listen(fc_t *app, char *host, unsigned int port, fc_on_listen cb);
 
 fc_errno fc_req_get_param(fc_request_t *req, const char *name, char **out);

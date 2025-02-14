@@ -105,7 +105,7 @@ void fc_post(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema
 
 void fc_put(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema)
 {
-  fc_errno err = fc__add_route(app, path, handler, FC_HTTP_POST, schema);
+  fc_errno err = fc__add_route(app, path, handler, FC_HTTP_PUT, schema);
   if (FC_ERR_OK != err)
   {
     fprintf(stderr, "[FALCON ERROR]: Failed to add path (%s) to the router\n", path);
@@ -115,7 +115,7 @@ void fc_put(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_
 
 void fc_patch(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema)
 {
-  fc_errno err = fc__add_route(app, path, handler, FC_HTTP_POST, schema);
+  fc_errno err = fc__add_route(app, path, handler, FC_HTTP_PATCH, schema);
   if (FC_ERR_OK != err)
   {
     fprintf(stderr, "[FALCON ERROR]: Failed to add path (%s) to the router\n", path);
@@ -125,7 +125,47 @@ void fc_patch(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schem
 
 void fc_delete(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema)
 {
-  fc_errno err = fc__add_route(app, path, handler, FC_HTTP_POST, schema);
+  fc_errno err = fc__add_route(app, path, handler, FC_HTTP_DELETE, schema);
+  if (FC_ERR_OK != err)
+  {
+    fprintf(stderr, "[FALCON ERROR]: Failed to add path (%s) to the router\n", path);
+    exit(1);
+  }
+}
+
+void fc_trace(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema)
+{
+  fc_errno err = fc__add_route(app, path, handler, FC_HTTP_TRACE, schema);
+  if (FC_ERR_OK != err)
+  {
+    fprintf(stderr, "[FALCON ERROR]: Failed to add path (%s) to the router\n", path);
+    exit(1);
+  }
+}
+
+void fc_connect(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema)
+{
+  fc_errno err = fc__add_route(app, path, handler, FC_HTTP_CONNECT, schema);
+  if (FC_ERR_OK != err)
+  {
+    fprintf(stderr, "[FALCON ERROR]: Failed to add path (%s) to the router\n", path);
+    exit(1);
+  }
+}
+
+void fc_options(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema)
+{
+  fc_errno err = fc__add_route(app, path, handler, FC_HTTP_OPTIONS, schema);
+  if (FC_ERR_OK != err)
+  {
+    fprintf(stderr, "[FALCON ERROR]: Failed to add path (%s) to the router\n", path);
+    exit(1);
+  }
+}
+
+void fc_head(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema)
+{
+  fc_errno err = fc__add_route(app, path, handler, FC_HTTP_HEAD, schema);
   if (FC_ERR_OK != err)
   {
     fprintf(stderr, "[FALCON ERROR]: Failed to add path (%s) to the router\n", path);
@@ -137,7 +177,7 @@ void fc_res_ok(fc_response_t *res)
 {
   char *title = "OK";
   char *message = "OK";
-  send_html_response(res->handler, res->status, title, message);
+  send_html_response((uv_handle_t *)res->handler, res->status, title, message);
 }
 
 void fc_res_json(fc_response_t *res, jjson_t *json)
@@ -148,6 +188,12 @@ void fc_res_json(fc_response_t *res, jjson_t *json)
   size_t body_len = strlen(body);
   send_json_response(res, body, body_len);
   // TODO: free body
+}
+
+fc_errno fc_res_sendfile(fc_response_t *res, const char *path)
+{
+  // uv_fs_sendfile(uv_loop_t *loop, uv_fs_t *req, uv_file out_fd, uv_file in_fd, int64_t in_offset, size_t length, uv_fs_cb cb);
+  return FC_ERR_OK;
 }
 
 void fc_res_set_status(fc_response_t *res, fc_http_status status)
@@ -312,7 +358,7 @@ void on_read_request(uv_stream_t *client, long nread, const uv_buf_t *buf)
   {
     /* Note: ensure that 'request' does not get popped from the stack while being used */
     fc_request_t request;
-    request.handler = (uv_handle_t *)client;
+    request.handler = (struct uv_handle_t *)client;
     request.buf = (fc_stringview_t){.ptr = buf->base, .len = nread};
     request.headers.nheads = 0;
     request.params.nparams = 0;
@@ -346,6 +392,34 @@ int http_parser_on_method(llhttp_t *p, const char *at, size_t len)
   else if (0 == strncmp("POST", at, 4))
   {
     req->method = FC_HTTP_POST;
+  }
+  else if (0 == strncmp("PUT", at, 3))
+  {
+    req->method = FC_HTTP_PUT;
+  }
+  else if (0 == strncmp("DELETE", at, 6))
+  {
+    req->method = FC_HTTP_DELETE;
+  }
+  else if (0 == strncmp("HEAD", at, 4))
+  {
+    req->method = FC_HTTP_HEAD;
+  }
+  else if (0 == strncmp("OPTIONS", at, 6))
+  {
+    req->method = FC_HTTP_OPTIONS;
+  }
+  else if (0 == strncmp("TRACE", at, 5))
+  {
+    req->method = FC_HTTP_TRACE;
+  }
+  else if (0 == strncmp("CONNECT", at, 7))
+  {
+    req->method = FC_HTTP_CONNECT;
+  }
+  else if (0 == strncmp("PATCH", at, 5))
+  {
+    req->method = FC_HTTP_PATCH;
   }
   else
   {
@@ -468,7 +542,7 @@ void send_404_response(fc_request_t *request)
   size_t message_len = snprintf(NULL, 0, "Cannot %s %s", method_str, path) + 1;
   char message[message_len];
   snprintf(message, message_len, "Cannot %s %s", method_str, path);
-  send_html_response(request->handler, FC_STATUS_NOT_FOUND, title, message);
+  send_html_response((uv_handle_t *)request->handler, FC_STATUS_NOT_FOUND, title, message);
 
   free(path);
 }
@@ -478,7 +552,7 @@ void send_bad_req_response(fc_request_t *request)
   char *title = "Bad request";
   char *message = "Bad request";
   fc_http_status status = FC_STATUS_BAD_REQUEST;
-  send_html_response(request->handler, status, title, message);
+  send_html_response((uv_handle_t *)request->handler, status, title, message);
 }
 
 void send_html_response(uv_handle_t *handler, fc_http_status status, char *title, char *message)
@@ -491,7 +565,7 @@ void send_html_response(uv_handle_t *handler, fc_http_status status, char *title
 
 void send_json_response(fc_response_t *res, char *pload, size_t pload_len)
 {
-  send_http_response(res->handler, res->status, CONTENT_TYPE_JSON, pload, pload_len);
+  send_http_response((uv_handle_t *)res->handler, res->status, CONTENT_TYPE_JSON, pload, pload_len);
 }
 
 void send_http_response(uv_handle_t *handler, fc_http_status status, char *cont_type, char *body, size_t body_len)
