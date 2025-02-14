@@ -1,3 +1,6 @@
 [submodule "external/jack"]
 	path = external/jack
 	url = https://github.com/edilson258/jack.git
+[submodule "tests/unity"]
+	path = tests/unity
+	url = https://github.com/ThrowTheSwitch/Unity.git

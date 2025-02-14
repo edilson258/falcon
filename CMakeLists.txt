@@ -23,3 +23,5 @@ target_include_directories(falcon PUBLIC ${CMAKE_SOURCE_DIR}/external/jack)
 add_executable(example example.c)
 target_link_libraries(example PRIVATE falcon uv ${llhttp_parser})
 target_include_directories(example PUBLIC ${CMAKE_SOURCE_DIR}/include)
+
+add_subdirectory(tests)
