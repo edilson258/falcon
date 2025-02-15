@@ -97,7 +97,6 @@ fc_errno fc_res_sendfile(fc_response_t *res, const char *path);
 int fc_listen(fc_t *app, char *host, unsigned int port, fc_on_listen cb);
 
 fc_errno fc_req_get_param(fc_request_t *req, const char *name, char **out);
-fc_errno fc_req_get_param_as_int(fc_request_t *req, const char *name, int *out);
 fc_errno fc_req_bind_json(fc_request_t *req, jjson_t *json, const fc_schema_t *schema);
 fc_errno fc_req_get_header(fc_request_t *req, const char *name, char **out);
 

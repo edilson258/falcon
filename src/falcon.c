@@ -1,5 +1,5 @@
 #include <assert.h>
-#include <cctype>
+#include <ctype.h>
 #include <inttypes.h>
 #include <stdarg.h>
 #include <stdbool.h>
@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 
 #define JACK_IMPLEMENTATION
 #include <jack.h>
@@ -202,42 +203,27 @@ void fc_res_set_status(fc_response_t *res, fc_http_status status)
   res->status = status;
 }
 
-fc_errno fc_req_get_param(fc_request_t *req, const char *name, char **out)
+fc_errno fc__sv_kv_array_get(fc__sv_kv_array *arr, const char *name, char **out)
 {
-  for (int i = 0; i < req->params.count; ++i)
+  for (int i = 0; i < arr->count; ++i)
   {
-    if (strncmp(name, req->params.items[i].key.ptr, req->params.items[i].key.len) == 0)
+    if (strncasecmp(name, arr->items[i].key.ptr, arr->items[i].key.len) == 0)
     {
-      *out = (char *)req->params.items[i].value.ptr;
+      *out = strndup(arr->items[i].value.ptr, arr->items[i].value.len);
       return FC_ERR_OK;
     }
   }
   return FC_ERR_ENTRY_NOT_FOUND;
 }
 
-fc_errno fc_req_get_param_as_int(fc_request_t *req, const char *name, int *out)
+fc_errno fc_req_get_param(fc_request_t *req, const char *name, char **out)
 {
-  char *out_str;
-  fc_errno err = fc_req_get_param(req, name, &out_str);
-  if (FC_ERR_OK != err)
-  {
-    return err;
-  }
-  *out = (int)strtol(out_str, NULL, 10);
-  return FC_ERR_OK;
+  return fc__sv_kv_array_get(&req->params, name, out);
 }
 
 fc_errno fc_req_get_header(fc_request_t *req, const char *name, char **out)
 {
-  for (size_t i = 0; i < req->headers.count; ++i)
-  {
-    if (strncmp(name, req->headers.items[i].key.ptr, req->headers.items[i].key.len) == 0)
-    {
-      fc_stringview_get(out, &req->headers.items[i].value);
-      return FC_ERR_OK;
-    }
-  }
-  return FC_ERR_ENTRY_NOT_FOUND;
+  return fc__sv_kv_array_get(&req->headers, name, out);
 }
 
 bool match_fc_to_jjson_type(fc_data_t fc_t, jjson_type jj_t)
