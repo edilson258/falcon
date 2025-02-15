@@ -214,11 +214,11 @@ fc_errno fc__router_match_req(fc_router_t *router, fc_request_t *req, char *path
         break;
       case FC__ROUTE_FRAG_PARAM:
         found = true;
-        if (req->params.nparams < FC__REQ_PARAM_MAX_LEN) /* Ignore params if too many */
+        if (req->params.count < FC__SV_KV_ARRAY_LEN) /* Ignore params if too many */
         {
-          fc_stringview_t name = {.ptr = child->label + 1, .len = strnlen(child->label + 1, FC__STRING_MAX_LEN)} /* '+1' to skip ':' */;
+          fc_stringview_t key = {.ptr = child->label + 1, .len = strnlen(child->label + 1, FC__STRING_MAX_LEN)} /* '+1' to skip ':' */;
           fc_stringview_t value = {.ptr = frags[i], .len = strnlen(frags[i], FC__STRING_MAX_LEN)};
-          req->params.params[req->params.nparams++] = (fc__req_param_t){.name = name, .value = value};
+          req->params.items[req->params.count++] = (fc__sv_kv){.key = key, .value = value};
         }
         break;
       case FC__ROUTE_FRAG_WILDCARD:

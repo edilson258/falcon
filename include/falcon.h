@@ -8,43 +8,34 @@
 #include <jack.h>
 #include <stddef.h>
 
-#define FC__REQ_PARAM_MAX_LEN 100
-#define FC__REQ_HEADS_MAX_LEN 100
+/* Stringview key-value array length */
+#define FC__SV_KV_ARRAY_LEN 100
 
+/* stringview key-value */
 typedef struct
 {
-  fc_stringview_t name;
+  fc_stringview_t key;
   fc_stringview_t value;
-} fc__req_param_t;
+} fc__sv_kv;
 
-typedef struct fc__req_params
+/*  key-value array of stringviews */
+typedef struct
 {
-  size_t nparams;
-  fc__req_param_t params[FC__REQ_PARAM_MAX_LEN];
-} fc__req_params;
+  size_t count;
+  fc__sv_kv items[FC__SV_KV_ARRAY_LEN];
+} fc__sv_kv_array;
 
 typedef struct
 {
-  fc_stringview_t name;
-  fc_stringview_t value;
-} fc_req_header;
-
-typedef struct
-{
-  size_t nheads;
-  fc_req_header heads[FC__REQ_HEADS_MAX_LEN];
-} fc_req_headers;
-
-typedef struct
-{
-  fc_stringview_t buf;
-  fc_stringview_t path;
-  fc_stringview_t body_buf;
-  void *body;
   fc_http_method method;
+  fc_stringview_t raw;
+  fc_stringview_t path;
+  fc_stringview_t raw_body;
+  /* Parsed body */
+  jjson_t *body;
+  fc__sv_kv_array params;
+  fc__sv_kv_array headers;
   struct uv_handle_t *handler;
-  fc_req_headers headers;
-  fc__req_params params;
 } fc_request_t;
 
 typedef struct

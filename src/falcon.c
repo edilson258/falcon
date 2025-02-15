@@ -203,11 +203,11 @@ void fc_res_set_status(fc_response_t *res, fc_http_status status)
 
 fc_errno fc_req_get_param(fc_request_t *req, const char *name, char **out)
 {
-  for (int i = 0; i < req->params.nparams; ++i)
+  for (int i = 0; i < req->params.count; ++i)
   {
-    if (strncmp(name, req->params.params[i].name.ptr, req->params.params[i].name.len) == 0)
+    if (strncmp(name, req->params.items[i].key.ptr, req->params.items[i].key.len) == 0)
     {
-      *out = (char *)req->params.params[i].value.ptr;
+      *out = (char *)req->params.items[i].value.ptr;
       return FC_ERR_OK;
     }
   }
@@ -228,11 +228,11 @@ fc_errno fc_req_get_param_as_int(fc_request_t *req, const char *name, int *out)
 
 fc_errno fc_req_get_header(fc_request_t *req, const char *name, char **out)
 {
-  for (size_t i = 0; i < req->headers.nheads; ++i)
+  for (size_t i = 0; i < req->headers.count; ++i)
   {
-    if (strncmp(name, req->headers.heads[i].name.ptr, req->headers.heads[i].name.len) == 0)
+    if (strncmp(name, req->headers.items[i].key.ptr, req->headers.items[i].key.len) == 0)
     {
-      fc_stringview_get(out, &req->headers.heads[i].value);
+      fc_stringview_get(out, &req->headers.items[i].value);
       return FC_ERR_OK;
     }
   }
@@ -261,7 +261,7 @@ bool match_fc_to_jjson_type(fc_data_t fc_t, jjson_type jj_t)
 
 fc_errno fc_req_bind_json(fc_request_t *req, jjson_t *json, const fc_schema_t *schema)
 {
-  enum jjson_error err = jjson_parse(json, req->body_buf.ptr, req->body_buf.len);
+  enum jjson_error err = jjson_parse(json, req->raw_body.ptr, req->raw_body.len);
   if (JJE_OK != err)
   {
     return FC_ERR_INVALID_JSON;
@@ -359,9 +359,9 @@ void on_read_request(uv_stream_t *client, long nread, const uv_buf_t *buf)
     /* Note: ensure that 'request' does not get popped from the stack while being used */
     fc_request_t request;
     request.handler = (struct uv_handle_t *)client;
-    request.buf = (fc_stringview_t){.ptr = buf->base, .len = nread};
-    request.headers.nheads = 0;
-    request.params.nparams = 0;
+    request.raw = (fc_stringview_t){.ptr = buf->base, .len = nread};
+    request.params.count = 0;
+    request.headers.count = 0;
     http_parse_request(buf->base, nread, &request);
   }
   else
@@ -431,7 +431,7 @@ int http_parser_on_method(llhttp_t *p, const char *at, size_t len)
 int http_parser_on_body(llhttp_t *p, const char *at, size_t len)
 {
   fc_request_t *req = (fc_request_t *)p->data;
-  req->body_buf = (fc_stringview_t){.ptr = at, .len = len};
+  req->raw_body = (fc_stringview_t){.ptr = at, .len = len};
   return HPE_OK;
 }
 
@@ -445,18 +445,18 @@ int http_parser_on_url(llhttp_t *p, const char *at, size_t len)
 int http_parser_on_header_field(llhttp_t *p, const char *at, size_t len)
 {
   fc_request_t *req = (fc_request_t *)p->data;
-  if (req->headers.nheads >= FC__REQ_HEADS_MAX_LEN)
+  if (req->headers.count >= FC__SV_KV_ARRAY_LEN)
   {
     return FC_ERR_LIMIT_EXCEEDED;
   }
-  req->headers.heads[req->headers.nheads].name = (fc_stringview_t){.ptr = at, .len = len};
+  req->headers.items[req->headers.count].key = (fc_stringview_t){.ptr = at, .len = len};
   return HPE_OK;
 }
 
 int http_parser_on_header_value(llhttp_t *p, const char *at, size_t len)
 {
   fc_request_t *req = (fc_request_t *)p->data;
-  req->headers.heads[req->headers.nheads++].value = (fc_stringview_t){.ptr = at, .len = len};
+  req->headers.items[req->headers.count++].value = (fc_stringview_t){.ptr = at, .len = len};
   return HPE_OK;
 }
 
@@ -498,10 +498,10 @@ void fc__match_request_to_handler(fc_request_t *request)
 
 defer:
   free(path);
-  free((void *)request->buf.ptr);
+  free((void *)request->raw.ptr);
   if (handler->schema)
   {
-    jjson_deinit((jjson_t *)request->body);
+    jjson_deinit(request->body);
   }
 }
 
