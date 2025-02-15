@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <cctype>
 #include <inttypes.h>
 #include <stdarg.h>
 #include <stdbool.h>
@@ -448,6 +449,10 @@ int http_parser_on_header_field(llhttp_t *p, const char *at, size_t len)
   if (req->headers.count >= FC__SV_KV_ARRAY_LEN)
   {
     return FC_ERR_LIMIT_EXCEEDED;
+  }
+  for (size_t i = 0; i < len; ++i)
+  {
+    ((char *)at)[i] = tolower(at[i]);
   }
   req->headers.items[req->headers.count].key = (fc_stringview_t){.ptr = at, .len = len};
   return HPE_OK;
