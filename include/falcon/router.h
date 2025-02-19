@@ -1,10 +1,15 @@
 #ifndef __FALCON_ROUTER__
 #define __FALCON_ROUTER__
 
-#include <falcon.h>
 #include <stdbool.h>
 
+#include <falcon/request.h>
+#include <falcon/response.h>
+#include <falcon/schema.h>
+
 #define PATH_MAX_FRAGS 100
+
+typedef void (*fc_route_handler_fn)(fc_request_t *, fc_response_t *);
 
 typedef enum
 {
