@@ -9,6 +9,7 @@
 #include <string.h>
 #include <strings.h>
 #include <sys/types.h>
+#include <termios.h>
 #include <unistd.h>
 
 #define JACK_IMPLEMENTATION
@@ -470,6 +471,8 @@ void fc__match_request_to_handler(fc_request_t *request)
   char *path;
   assert(FC_ERR_OK == fc_stringview_get(&path, &request->path));
 
+  bool is_body_parsed = false;
+
   fc__route_handler *handler;
   if (FC_ERR_OK == fc__router_match_req(&app_router_glob, request, path, &handler))
   {
@@ -480,6 +483,15 @@ void fc__match_request_to_handler(fc_request_t *request)
 
     if (handler->schema)
     {
+      if (!request->raw_body.ptr || !request->raw_body.ptr[0])
+      {
+        /* TODO: send unprocessable entity response */
+        send_bad_req_response(request);
+        goto defer;
+      }
+
+      is_body_parsed = true;
+
       jjson_t json;
       jjson_init(&json);
 
@@ -504,8 +516,9 @@ void fc__match_request_to_handler(fc_request_t *request)
 defer:
   free(path);
   free((void *)request->raw.ptr);
-  if (handler->schema)
+  if (is_body_parsed)
   {
+    // TODO: put this in the workers queue (uv thread pool)
     jjson_deinit(request->body);
   }
 }
