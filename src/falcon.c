@@ -1,5 +1,4 @@
 #include <assert.h>
-#include <ctype.h>
 #include <inttypes.h>
 #include <stdarg.h>
 #include <stdbool.h>
@@ -9,6 +8,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 #define JACK_IMPLEMENTATION
 #include <jack.h>
@@ -203,27 +204,42 @@ void fc_res_set_status(fc_response_t *res, fc_http_status status)
   res->status = status;
 }
 
-fc_errno fc__sv_kv_array_get(fc__sv_kv_array *arr, const char *name, char **out)
+fc_errno fc__sv_kv_array_get(fc__sv_kv_array *arr, const char *name, char **out, size_t *out_len)
 {
   for (int i = 0; i < arr->count; ++i)
   {
     if (strncasecmp(name, arr->items[i].key.ptr, arr->items[i].key.len) == 0)
     {
-      *out = strndup(arr->items[i].value.ptr, arr->items[i].value.len);
+      *out = (char *)arr->items[i].value.ptr;
+      *out_len = arr->items[i].value.len;
       return FC_ERR_OK;
     }
   }
   return FC_ERR_ENTRY_NOT_FOUND;
 }
 
-fc_errno fc_req_get_param(fc_request_t *req, const char *name, char **out)
+fc_errno fc_req_get_param(fc_request_t *req, const char *name, char **out, size_t *out_len)
 {
-  return fc__sv_kv_array_get(&req->params, name, out);
+  return fc__sv_kv_array_get(&req->params, name, out, out_len);
 }
 
-fc_errno fc_req_get_header(fc_request_t *req, const char *name, char **out)
+fc_errno fc_req_get_header(fc_request_t *req, const char *name, char **out, size_t *out_len)
 {
-  return fc__sv_kv_array_get(&req->headers, name, out);
+  return fc__sv_kv_array_get(&req->headers, name, out, out_len);
+}
+
+fc_errno fc_req_get_cookie(fc_request_t *req, const char *name, char **out, size_t *out_len)
+{
+  if (!req->cookies.parsed)
+  {
+    fc_errno err = fc__req_parse_cookies(req);
+    if (FC_ERR_OK != err)
+    {
+      return err;
+    }
+  }
+
+  return fc__sv_kv_array_get(&req->cookies.cookies, name, out, out_len);
 }
 
 bool match_fc_to_jjson_type(fc_data_t fc_t, jjson_type jj_t)
@@ -349,6 +365,8 @@ void on_read_request(uv_stream_t *client, long nread, const uv_buf_t *buf)
     request.raw = (fc_stringview_t){.ptr = buf->base, .len = nread};
     request.params.count = 0;
     request.headers.count = 0;
+    request.cookies.parsed = false;
+    request.cookies.cookies.count = 0;
     http_parse_request(buf->base, nread, &request);
   }
   else
@@ -435,10 +453,6 @@ int http_parser_on_header_field(llhttp_t *p, const char *at, size_t len)
   if (req->headers.count >= FC__SV_KV_ARRAY_LEN)
   {
     return FC_ERR_LIMIT_EXCEEDED;
-  }
-  for (size_t i = 0; i < len; ++i)
-  {
-    ((char *)at)[i] = tolower(at[i]);
   }
   req->headers.items[req->headers.count].key = (fc_stringview_t){.ptr = at, .len = len};
   return HPE_OK;

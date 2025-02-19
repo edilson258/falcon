@@ -1,4 +1,6 @@
+#include <assert.h>
 #include <falcon.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -99,8 +101,18 @@ void users_find(fc_request_t *req, fc_response_t *res)
 
 void users_find_by_id(fc_request_t *req, fc_response_t *res)
 {
-  int id;
-  fc_req_get_param_as_int(req, "id", &id);
+  char *id_buf = NULL;
+  size_t id_buf_len = 0;
+  assert(FC_ERR_OK == fc_req_get_param(req, "id", &id_buf, &id_buf_len) && id_buf);
+  int id = (int)strtol(id_buf, NULL, 10);
+  printf("%s\n", id_buf);
+
+  char *theme_buf;
+  size_t theme_buf_len;
+  if (FC_ERR_OK == fc_req_get_cookie(req, "Theme", &theme_buf, &theme_buf_len))
+  {
+    printf("Theme: %.*s\n", (int)theme_buf_len, theme_buf);
+  }
 
   struct User *user = NULL;
   for (int i = 0; i < users_count; ++i)

@@ -3,40 +3,12 @@
 
 #include <falcon/errn.h>
 #include <falcon/http.h>
+#include <falcon/request.h>
 #include <falcon/stringview.h>
 
 #include <jack.h>
+#include <stdbool.h>
 #include <stddef.h>
-
-/* Stringview key-value array length */
-#define FC__SV_KV_ARRAY_LEN 100
-
-/* stringview key-value */
-typedef struct
-{
-  fc_stringview_t key;
-  fc_stringview_t value;
-} fc__sv_kv;
-
-/*  key-value array of stringviews */
-typedef struct
-{
-  size_t count;
-  fc__sv_kv items[FC__SV_KV_ARRAY_LEN];
-} fc__sv_kv_array;
-
-typedef struct
-{
-  fc_http_method method;
-  fc_stringview_t raw;
-  fc_stringview_t path;
-  fc_stringview_t raw_body;
-  /* Parsed body */
-  jjson_t *body;
-  fc__sv_kv_array params;
-  fc__sv_kv_array headers;
-  struct uv_handle_t *handler;
-} fc_request_t;
 
 typedef struct
 {
@@ -96,8 +68,9 @@ fc_errno fc_res_sendfile(fc_response_t *res, const char *path);
 
 int fc_listen(fc_t *app, char *host, unsigned int port, fc_on_listen cb);
 
-fc_errno fc_req_get_param(fc_request_t *req, const char *name, char **out);
+fc_errno fc_req_get_param(fc_request_t *req, const char *name, char **out, size_t *out_len);
 fc_errno fc_req_bind_json(fc_request_t *req, jjson_t *json, const fc_schema_t *schema);
-fc_errno fc_req_get_header(fc_request_t *req, const char *name, char **out);
+fc_errno fc_req_get_header(fc_request_t *req, const char *name, char **out, size_t *out_len);
+fc_errno fc_req_get_cookie(fc_request_t *req, const char *name, char **out, size_t *out_len);
 
 #endif // !__FALCON__
