@@ -12,30 +12,28 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-typedef struct
-{
-} fc_t;
+typedef struct fc_app fc_app;
+
+fc_app *fc_app_new();
 
 typedef void (*fc_on_listen)();
 
-fc_errno fc_init(fc_t *app);
-
-void fc_get(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
-void fc_post(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
-void fc_put(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
-void fc_patch(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
-void fc_delete(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
-void fc_trace(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
-void fc_connect(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
-void fc_options(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
-void fc_head(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
+void fc_get(fc_app *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
+void fc_post(fc_app *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
+void fc_put(fc_app *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
+void fc_patch(fc_app *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
+void fc_delete(fc_app *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
+void fc_trace(fc_app *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
+void fc_connect(fc_app *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
+void fc_options(fc_app *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
+void fc_head(fc_app *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
 
 void fc_res_ok(fc_response_t *res);
 void fc_res_set_status(fc_response_t *res, fc_http_status status);
 void fc_res_json(fc_response_t *res, jjson_t *json);
 fc_errno fc_res_sendfile(fc_response_t *res, const char *path);
 
-int fc_listen(fc_t *app, char *host, unsigned int port, fc_on_listen cb);
+int fc_listen(fc_app *app, char *host, unsigned int port, fc_on_listen cb);
 
 fc_errno fc_req_get_param(fc_request_t *req, const char *name, char **out, size_t *out_len);
 fc_errno fc_req_bind_json(fc_request_t *req, jjson_t *json, const fc_schema_t *schema);

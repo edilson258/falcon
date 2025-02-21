@@ -35,19 +35,18 @@ const fc_schema_t users_create_schema = {
 
 int main(void)
 {
-  fc_t app;
-  fc_init(&app);
+  fc_app *app = fc_app_new();
 
   /* mock users */
   add_user(get_user_id(), "alice@test.com", "alice123");
   add_user(get_user_id(), "bob@test.com", "bob123");
   add_user(get_user_id(), "john@test.com", "john123");
 
-  fc_get(&app, "/users", users_find, NULL);
-  fc_get(&app, "/users/:id", users_find_by_id, NULL);
-  fc_post(&app, "/users", users_create, &users_create_schema);
+  fc_get(app, "/users", users_find, NULL);
+  fc_get(app, "/users/:id", users_find_by_id, NULL);
+  fc_post(app, "/users", users_create, &users_create_schema);
 
-  return fc_listen(&app, "0.0.0.0", 8080, on_listen);
+  return fc_listen(app, "0.0.0.0", 8080, on_listen);
 }
 
 void on_listen()

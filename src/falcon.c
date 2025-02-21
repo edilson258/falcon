@@ -1,16 +1,9 @@
 #include <assert.h>
-#include <inttypes.h>
-#include <stdarg.h>
 #include <stdbool.h>
 #include <stddef.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h>
-#include <sys/types.h>
-#include <termios.h>
-#include <unistd.h>
 
 #define JACK_IMPLEMENTATION
 #include <jack.h>
@@ -26,13 +19,19 @@
 #include <falcon/stringview.h>
 #include <falcon/templates.h>
 
-// Globals
-uv_loop_t *main_loop_glob;
-uv_tcp_t server_sock_glob;
-struct sockaddr_in server_addr_glob;
-fc_router_t app_router_glob;
-llhttp_t http_parser_glob;
-llhttp_settings_t http_parser_settings_glob;
+struct fc_app
+{
+  fc_router_t router;
+
+  uv_loop_t *main_loop;
+  uv_tcp_t server_sock;
+  struct sockaddr_in server_addr;
+
+  llhttp_t http_parser;
+  llhttp_settings_t http_parser_settings;
+};
+
+struct fc_app *app;
 
 // uv IO callbacks
 void on_write(uv_write_t *req, int status);
@@ -52,9 +51,9 @@ int http_parser_on_header_value(llhttp_t *p, const char *at, size_t len);
 /**
  * INTERNAL API
  */
-int fc__init_server(char *host, unsigned port);
+void fc__app_init(char *host, unsigned port);
 void fc__match_request_to_handler(fc_request_t *request);
-fc_errno fc__add_route(fc_t *app, char *path, fc_route_handler_fn handler, fc_http_method method, const fc_schema_t *schema);
+fc_errno fc__add_route(fc_app *app, char *path, fc_route_handler_fn handler, fc_http_method method, const fc_schema_t *schema);
 
 /**
  * RESPONSE HANDLERS
@@ -70,24 +69,14 @@ void send_http_response(uv_handle_t *handler, fc_http_status status, char *cont_
  * EXTERANL API
  */
 
-fc_errno fc_init(fc_t *app)
+fc_app *fc_app_new()
 {
-  // init app main router
-  fc__router_init(&app_router_glob);
-
-  // init http parser
-  llhttp_settings_init(&http_parser_settings_glob);
-  http_parser_settings_glob.on_url = http_parser_on_url;
-  http_parser_settings_glob.on_method = http_parser_on_method;
-  http_parser_settings_glob.on_body = http_parser_on_body;
-  http_parser_settings_glob.on_header_field = http_parser_on_header_field;
-  http_parser_settings_glob.on_header_value = http_parser_on_header_value;
-  llhttp_init(&http_parser_glob, HTTP_REQUEST, &http_parser_settings_glob);
-
-  return FC_ERR_OK;
+  app = malloc(sizeof(struct fc_app));
+  fc__router_init(&app->router);
+  return app;
 }
 
-void fc_get(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema)
+void fc_get(fc_app *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema)
 {
   fc_errno err = fc__add_route(app, path, handler, FC_HTTP_GET, schema);
   if (FC_ERR_OK != err)
@@ -97,7 +86,7 @@ void fc_get(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_
   }
 }
 
-void fc_post(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema)
+void fc_post(fc_app *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema)
 {
   fc_errno err = fc__add_route(app, path, handler, FC_HTTP_POST, schema);
   if (FC_ERR_OK != err)
@@ -107,7 +96,7 @@ void fc_post(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema
   }
 }
 
-void fc_put(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema)
+void fc_put(fc_app *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema)
 {
   fc_errno err = fc__add_route(app, path, handler, FC_HTTP_PUT, schema);
   if (FC_ERR_OK != err)
@@ -117,7 +106,7 @@ void fc_put(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_
   }
 }
 
-void fc_patch(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema)
+void fc_patch(fc_app *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema)
 {
   fc_errno err = fc__add_route(app, path, handler, FC_HTTP_PATCH, schema);
   if (FC_ERR_OK != err)
@@ -127,7 +116,7 @@ void fc_patch(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schem
   }
 }
 
-void fc_delete(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema)
+void fc_delete(fc_app *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema)
 {
   fc_errno err = fc__add_route(app, path, handler, FC_HTTP_DELETE, schema);
   if (FC_ERR_OK != err)
@@ -137,7 +126,7 @@ void fc_delete(fc_t *app, char *path, fc_route_handler_fn handler, const fc_sche
   }
 }
 
-void fc_trace(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema)
+void fc_trace(fc_app *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema)
 {
   fc_errno err = fc__add_route(app, path, handler, FC_HTTP_TRACE, schema);
   if (FC_ERR_OK != err)
@@ -147,7 +136,7 @@ void fc_trace(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schem
   }
 }
 
-void fc_connect(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema)
+void fc_connect(fc_app *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema)
 {
   fc_errno err = fc__add_route(app, path, handler, FC_HTTP_CONNECT, schema);
   if (FC_ERR_OK != err)
@@ -157,7 +146,7 @@ void fc_connect(fc_t *app, char *path, fc_route_handler_fn handler, const fc_sch
   }
 }
 
-void fc_options(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema)
+void fc_options(fc_app *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema)
 {
   fc_errno err = fc__add_route(app, path, handler, FC_HTTP_OPTIONS, schema);
   if (FC_ERR_OK != err)
@@ -167,7 +156,7 @@ void fc_options(fc_t *app, char *path, fc_route_handler_fn handler, const fc_sch
   }
 }
 
-void fc_head(fc_t *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema)
+void fc_head(fc_app *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema)
 {
   fc_errno err = fc__add_route(app, path, handler, FC_HTTP_HEAD, schema);
   if (FC_ERR_OK != err)
@@ -287,19 +276,18 @@ fc_errno fc_req_bind_json(fc_request_t *req, jjson_t *json, const fc_schema_t *s
   return FC_ERR_OK;
 }
 
-int fc_listen(fc_t *app, char *host, unsigned int port, fc_on_listen cb)
+int fc_listen(fc_app *app, char *host, unsigned int port, fc_on_listen cb)
 {
-  int result = 0;
-  fc__init_server(host, port);
+  fc__app_init(host, port);
 
-  result = uv_tcp_bind(&server_sock_glob, (const struct sockaddr *)&server_addr_glob, 0);
+  int result = uv_tcp_bind(&app->server_sock, (const struct sockaddr *)&app->server_addr, 0);
   if (result)
   {
     fprintf(stderr, "[FALCON ERROR]: Failed to bind at %s:%u, %s\n", host, port, uv_strerror(result));
     return -1;
   }
 
-  result = uv_listen((uv_stream_t *)&server_sock_glob, FC__SERVER_BACKLOG, on_connection);
+  result = uv_listen((uv_stream_t *)&app->server_sock, FC__SERVER_BACKLOG, on_connection);
   if (result)
   {
     fprintf(stderr, "[FALCON ERROR]: Failed to listen at %s:%u, %s\n", host, port, uv_strerror(result));
@@ -311,20 +299,28 @@ int fc_listen(fc_t *app, char *host, unsigned int port, fc_on_listen cb)
     cb();
   }
 
-  return uv_run(main_loop_glob, UV_RUN_DEFAULT);
+  return uv_run(app->main_loop, UV_RUN_DEFAULT);
 }
 
 /**
  * INTERNAL API
  */
 
-int fc__init_server(char *host, unsigned port)
+void fc__app_init(char *host, unsigned port)
 {
-  main_loop_glob = uv_default_loop();
-  uv_tcp_init(main_loop_glob, &server_sock_glob);
+  app->main_loop = uv_default_loop();
+  uv_tcp_init(app->main_loop, &app->server_sock);
   // TODO: validate host and port
-  uv_ip4_addr(host, port, &server_addr_glob);
-  return 0;
+  uv_ip4_addr(host, port, &app->server_addr);
+
+  // init http parser
+  llhttp_settings_init(&app->http_parser_settings);
+  app->http_parser_settings.on_url = http_parser_on_url;
+  app->http_parser_settings.on_method = http_parser_on_method;
+  app->http_parser_settings.on_body = http_parser_on_body;
+  app->http_parser_settings.on_header_field = http_parser_on_header_field;
+  app->http_parser_settings.on_header_value = http_parser_on_header_value;
+  llhttp_init(&app->http_parser, HTTP_REQUEST, &app->http_parser_settings);
 }
 
 void on_connection(uv_stream_t *server, int status)
@@ -378,9 +374,9 @@ void on_read_request(uv_stream_t *client, long nread, const uv_buf_t *buf)
 
 void http_parse_request(char *raw_buf, size_t buf_sz, fc_request_t *request)
 {
-  http_parser_glob.data = request;
-  enum llhttp_errno parse_err = llhttp_execute(&http_parser_glob, raw_buf, buf_sz);
-  llhttp_reset(&http_parser_glob);
+  app->http_parser.data = request;
+  enum llhttp_errno parse_err = llhttp_execute(&app->http_parser, raw_buf, buf_sz);
+  llhttp_reset(&app->http_parser);
   if (parse_err != HPE_OK)
   {
     return send_bad_req_response(request);
@@ -474,7 +470,7 @@ void fc__match_request_to_handler(fc_request_t *request)
   bool is_body_parsed = false;
 
   fc__route_handler *handler;
-  if (FC_ERR_OK == fc__router_match_req(&app_router_glob, request, path, &handler))
+  if (FC_ERR_OK == fc__router_match_req(&app->router, request, path, &handler))
   {
     /* Note: ensure that 'response' does not get popped from the stack while being used */
     fc_response_t response;
@@ -535,7 +531,7 @@ void on_close_connection(uv_handle_t *client)
   free(client);
 }
 
-fc_errno fc__add_route(fc_t *app, char *path, fc_route_handler_fn handler, fc_http_method method, const fc_schema_t *schema)
+fc_errno fc__add_route(fc_app *app, char *path, fc_route_handler_fn handler, fc_http_method method, const fc_schema_t *schema)
 {
   char *p;
   fc_errno err = fc_string_clone(&p, path, strnlen(path, FC__STRING_MAX_LEN));
@@ -543,7 +539,7 @@ fc_errno fc__add_route(fc_t *app, char *path, fc_route_handler_fn handler, fc_ht
   {
     return err;
   }
-  return fc__router_add_route(&app_router_glob, method, p, handler, schema);
+  return fc__router_add_route(&app->router, method, p, handler, schema);
 }
 
 /**
