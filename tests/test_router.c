@@ -7,7 +7,7 @@
 #include <falcon.h>
 #include <falcon/errn.h>
 #include <falcon/http.h>
-#include <falcon/router.h>
+#include <falcon/router_internal.h>
 
 void setUp(void)
 {
@@ -41,39 +41,36 @@ void test_split_path()
 
 void test_add_route_to_router()
 {
-  fc_router_t router;
-  fc__router_init(&router);
+  fc_router *router = fc_router_new();
 
-  fc__router_add_route(&router, FC_HTTP_GET, strdup("/users"), NULL, NULL);
+  fc__router_add_route(router, FC_HTTP_GET, strdup("/users"), NULL, NULL);
 
-  TEST_ASSERT_EQUAL_STRING("users", router.root->children->label);
+  TEST_ASSERT_EQUAL_STRING("users", router->root.children->label);
 }
 
 void test_add_route_to_router_with_collection()
 {
-  fc_router_t router;
-  fc__router_init(&router);
+  fc_router *router = fc_router_new();
 
-  fc_errno err = fc__router_add_route(&router, FC_HTTP_GET, strdup("/users"), NULL, NULL);
+  fc_errno err = fc__router_add_route(router, FC_HTTP_GET, strdup("/users"), NULL, NULL);
   TEST_ASSERT_EQUAL_INT(FC_ERR_OK, err);
-  TEST_ASSERT_EQUAL_STRING("users", router.root->children->label);
+  TEST_ASSERT_EQUAL_STRING("users", router->root.children->label);
 
-  err = fc__router_add_route(&router, FC_HTTP_GET, strdup("/users"), NULL, NULL);
+  err = fc__router_add_route(router, FC_HTTP_GET, strdup("/users"), NULL, NULL);
   TEST_ASSERT_EQUAL_INT(FC_ERR_ROUTE_CONFLIT, err);
 }
 
 void test_match_route()
 {
-  fc_router_t router;
-  fc__router_init(&router);
+  fc_router *router = fc_router_new();
 
-  fc__router_add_route(&router, FC_HTTP_GET, strdup("/profile"), NULL, NULL);
+  fc__router_add_route(router, FC_HTTP_GET, strdup("/profile"), NULL, NULL);
 
   char *path = strdup("/profile");
   fc_request_t req;
   req.method = FC_HTTP_GET;
   fc__route_handler *h = NULL;
-  fc_errno err = fc__router_match_req(&router, &req, path, &h);
+  fc_errno err = fc__router_match_req(router, &req, path, &h);
 
   TEST_ASSERT_EQUAL_INT(err, FC_ERR_OK);
   TEST_ASSERT_TRUE(h);
@@ -81,16 +78,15 @@ void test_match_route()
 
 void test_match_route_not_found()
 {
-  fc_router_t router;
-  fc__router_init(&router);
+  fc_router *router = fc_router_new();
 
-  fc__router_add_route(&router, FC_HTTP_GET, strdup("/products"), NULL, NULL);
+  fc__router_add_route(router, FC_HTTP_GET, strdup("/products"), NULL, NULL);
 
   char *path = strdup("/ping");
   fc_request_t req;
   req.method = FC_HTTP_GET;
   fc__route_handler *h = NULL;
-  fc_errno err = fc__router_match_req(&router, &req, path, &h);
+  fc_errno err = fc__router_match_req(router, &req, path, &h);
 
   TEST_ASSERT_EQUAL_INT(err, FC_ERR_ENTRY_NOT_FOUND);
   TEST_ASSERT_FALSE(h);
@@ -98,11 +94,10 @@ void test_match_route_not_found()
 
 void test_match_route_not_found_with_different_method()
 {
-  fc_router_t router;
-  fc__router_init(&router);
+  fc_router *router = fc_router_new();
 
   // register route with GET method
-  fc__router_add_route(&router, FC_HTTP_GET, strdup("/profile"), NULL, NULL);
+  fc__router_add_route(router, FC_HTTP_GET, strdup("/profile"), NULL, NULL);
 
   char *path = strdup("/profile");
   fc_request_t req;
@@ -110,7 +105,7 @@ void test_match_route_not_found_with_different_method()
   // match with POST method
   req.method = FC_HTTP_POST;
   fc__route_handler *h = NULL;
-  fc_errno err = fc__router_match_req(&router, &req, path, &h);
+  fc_errno err = fc__router_match_req(router, &req, path, &h);
 
   TEST_ASSERT_EQUAL_INT(err, FC_ERR_ENTRY_NOT_FOUND);
   TEST_ASSERT_FALSE(h);

@@ -18,15 +18,17 @@ fc_app *fc_app_new();
 
 typedef void (*fc_on_listen)();
 
-void fc_get(fc_app *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
-void fc_post(fc_app *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
-void fc_put(fc_app *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
-void fc_patch(fc_app *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
-void fc_delete(fc_app *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
-void fc_trace(fc_app *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
-void fc_connect(fc_app *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
-void fc_options(fc_app *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
-void fc_head(fc_app *app, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
+fc_errno fc_use_router(fc_app *app, fc_router *router);
+
+void fc_get(fc_router *router, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
+void fc_post(fc_router *router, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
+void fc_put(fc_router *router, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
+void fc_patch(fc_router *router, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
+void fc_delete(fc_router *router, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
+void fc_trace(fc_router *router, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
+void fc_connect(fc_router *router, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
+void fc_options(fc_router *router, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
+void fc_head(fc_router *router, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
 
 void fc_res_ok(fc_response_t *res);
 void fc_res_set_status(fc_response_t *res, fc_http_status status);

@@ -33,16 +33,12 @@ typedef struct fc__route_frag
   fc__route_handler *handlers[FC__HTTP_METHODS_COUNT];
 } fc__route_frag;
 
-typedef struct
-{
-  fc__route_frag *root;
-} fc_router_t;
+typedef struct fc_router fc_router;
 
-fc_errno fc__router_init(fc_router_t *router);
-void fc__frag_deinit(fc__route_frag *frag);
+fc_router *fc_router_new();
 
-fc_errno fc__router_add_route(fc_router_t *router, fc_http_method method, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
-fc_errno fc__router_match_req(fc_router_t *router, fc_request_t *req, char *path, fc__route_handler **handler);
+fc_errno fc__router_add_route(fc_router *router, fc_http_method method, char *path, fc_route_handler_fn handler, const fc_schema_t *schema);
+fc_errno fc__router_match_req(fc_router *router, fc_request_t *req, char *path, fc__route_handler **handler);
 
 /* Internal Functions */
 fc_errno fc__frag_init(const char *label, fc__route_frag_t type, fc__route_frag *frag);

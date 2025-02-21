@@ -10,16 +10,15 @@
 #include <falcon.h>
 #include <falcon/consts.h>
 #include <falcon/errn.h>
-#include <falcon/router.h>
+#include <falcon/router_internal.h>
 #include <falcon/stringview.h>
 #include <falcon/utils.h>
 
-/* Router Initialization */
-fc_errno fc__router_init(fc_router_t *router)
+fc_router *fc_router_new()
 {
-  router->root = malloc(sizeof(fc__route_frag));
-  fc__frag_init("", FC__ROUTE_FRAG_STATIC, router->root);
-  return FC_ERR_OK;
+  fc_router *router = malloc(sizeof(fc_router));
+  fc__frag_init("", FC__ROUTE_FRAG_STATIC, &router->root);
+  return router;
 }
 
 fc_errno fc__frag_init(const char *label, fc__route_frag_t type, fc__route_frag *frag)
@@ -116,7 +115,7 @@ bool fc__check_route_conflict(fc__route_frag *existing, fc__route_frag *new_frag
   return false;
 }
 
-fc_errno fc__router_add_route(fc_router_t *router, fc_http_method method, char *path, fc_route_handler_fn handler, const fc_schema_t *schema)
+fc_errno fc__router_add_route(fc_router *router, fc_http_method method, char *path, fc_route_handler_fn handler, const fc_schema_t *schema)
 {
   size_t frag_count = 0;
   char *frags[PATH_MAX_FRAGS];
@@ -127,7 +126,7 @@ fc_errno fc__router_add_route(fc_router_t *router, fc_http_method method, char *
   }
 
   bool wildcard_seen = false;
-  fc__route_frag *current = router->root;
+  fc__route_frag *current = &router->root;
 
   for (size_t i = 0; i < frag_count; ++i)
   {
@@ -188,7 +187,7 @@ fc_errno fc__router_add_route(fc_router_t *router, fc_http_method method, char *
   return FC_ERR_OK;
 }
 
-fc_errno fc__router_match_req(fc_router_t *router, fc_request_t *req, char *path, fc__route_handler **handler)
+fc_errno fc__router_match_req(fc_router *router, fc_request_t *req, char *path, fc__route_handler **handler)
 {
   size_t frag_count = 0;
   char *frags[PATH_MAX_FRAGS];
@@ -198,7 +197,7 @@ fc_errno fc__router_match_req(fc_router_t *router, fc_request_t *req, char *path
     return err;
   }
 
-  fc__route_frag *current = router->root;
+  fc__route_frag *current = &router->root;
 
   for (size_t i = 0; i < frag_count; i++)
   {
