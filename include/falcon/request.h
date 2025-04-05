@@ -20,7 +20,6 @@ typedef struct
   fc_stringview_t raw;
   fc_stringview_t path;
   fc_stringview_t raw_body;
-  /* Parsed body */
   jjson_t *body;
   fc__sv_kv_array params;
   fc__sv_kv_array headers;

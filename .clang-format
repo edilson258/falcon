@@ -10,3 +10,4 @@ BraceWrapping:
   BeforeElse: false
 ColumnLimit: 0
 AllowShortBlocksOnASingleLine: Never
+AllowShortCaseLabelsOnASingleLine: true

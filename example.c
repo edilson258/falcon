@@ -13,10 +13,10 @@ struct User
   char *password;
 };
 
-static int last_id = 1;
 int get_user_id()
 {
-  return last_id++;
+  static int id = 1;
+  return id++;
 }
 
 unsigned users_count = 0;
@@ -34,15 +34,20 @@ const fc_schema_t users_create_schema = {
     .nfields = 2,
     .fields = {{.name = "email", .type = FC_STRING_T}, {.name = "password", .type = FC_STRING_T}}};
 
-int main(void)
+void init_db()
 {
-  fc_app *app = fc_app_new();
-  fc_router *router = fc_router_new();
-
   /* mock users */
   add_user(get_user_id(), "alice@test.com", "alice123");
   add_user(get_user_id(), "bob@test.com", "bob123");
   add_user(get_user_id(), "john@test.com", "john123");
+}
+
+int main(void)
+{
+  init_db();
+
+  struct fc app;
+  struct fc_router router;
 
   fc_get(router, "/users", users_find, NULL);
   fc_get(router, "/users/:id", users_find_by_id, NULL);
