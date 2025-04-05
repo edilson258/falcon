@@ -6,11 +6,11 @@
 
 namespace fc
 {
+
 enum class Method
 {
   GET = 1,
   POST,
-
   // used internally to know how many routes are, must be the last
   COUNT,
 };
@@ -23,6 +23,7 @@ public:
   const Method GetMethod() const { return m_Method; }
   const std::string_view &GetRaw() const { return m_Raw; };
   const std::string_view &GetPath() const { return m_Path; }
+  const void *GetRemoteSock() const { return m_UVRemoteSock; }
 
 private:
   Method m_Method;
@@ -40,6 +41,15 @@ struct Res
 {
 public:
   static Res Ok();
+
+  const std::string &GetRaw() const { return m_Raw; }
+
+private:
+  std::string m_Raw;
+
+  Res(std::string raw) : m_Raw(std::move(raw)) {}
+
+  friend struct impl;
 };
 
 using PathHandler = std::function<Res(Req)>;
