@@ -27,6 +27,7 @@ public:
   Router m_Root;
   HttpParser m_HttpParser;
 
+  // The 'm_Loop->data' field always holds a pointer to an object of this struct
   uv_loop_t *m_Loop;
   uv_tcp_t m_HostSock;
   struct sockaddr_in m_Addr;
@@ -57,6 +58,26 @@ App::~App() { delete m_PImpl; }
 void App::Get(const std::string path, PathHandler handler)
 {
   m_PImpl->AddRoute(Method::GET, path, handler);
+}
+
+void App::Post(const std::string path, PathHandler handler)
+{
+  m_PImpl->AddRoute(Method::POST, path, handler);
+}
+
+void App::Put(const std::string path, PathHandler handler)
+{
+  m_PImpl->AddRoute(Method::PUT, path, handler);
+}
+
+void App::Delete(const std::string path, PathHandler handler)
+{
+  m_PImpl->AddRoute(Method::DELETE, path, handler);
+}
+
+void App::Patch(const std::string path, PathHandler handler)
+{
+  m_PImpl->AddRoute(Method::PATCH, path, handler);
 }
 
 int App::Listen(const std::string addr, std::function<void()> callBack)
@@ -119,13 +140,6 @@ void App::impl::OnReadBuf(uv_stream_t *client, long nread, const uv_buf_t *buf)
   ((App::impl *)client->loop->data)->ParseHttpRequest(RequestFactory((void *)client, std::string_view(buf->base, strnlen(buf->base, MAX_REQ_LEN))));
 }
 
-void App::impl::OnWrite(uv_write_t *req, int status)
-{
-  delete req->bufs;
-  delete req;
-  uv_close((uv_handle_t *)req->handle, App::impl::OnCloseConn);
-}
-
 void App::impl::ParseHttpRequest(Req req)
 {
   enum llhttp_errno err = m_HttpParser.Parse(req);
@@ -155,30 +169,16 @@ void App::impl::HandleResponse(Req req, Res res)
   uv_write(write_req, (uv_stream_t *)req.GetRemoteSock(), write_buf, 1, App::impl::OnWrite);
 }
 
-// void send_http_response(uv_handle_t *handler, fc_http_status status, char *cont_type, char *body, size_t body_len)
-// {
-//   char *status_str = fc__http_status_str(status);
-//   size_t head_len = snprintf(NULL, 0, HTTP_RESPONSE_HEADER_TEMPLATE, status, status_str, cont_type, body_len - 1) + 1;
-//   char head[head_len];
-//   snprintf(head, head_len, HTTP_RESPONSE_HEADER_TEMPLATE, status, status_str, cont_type, body_len - 1);
-
-//   uv_buf_t *write_bufs = (uv_buf_t *)malloc(sizeof(uv_buf_t) * 2);
-//   write_bufs[0] = uv_buf_init(head, head_len - 1);
-//   write_bufs[1] = uv_buf_init(body, body_len - 1);
-
-//   uv_write_t *write_req = (uv_write_t *)malloc(sizeof(uv_write_t));
-//   uv_write(write_req, (uv_stream_t *)handler, write_bufs, 2, on_write);
-// }
-// void on_write(uv_write_t *req, int status)
-// {
-//   free(req->bufs);
-//   free(req);
-//   uv_close((uv_handle_t *)req->handle, on_close_connection);
-// }
-
 void App::impl::AddRoute(Method method, const std::string path, PathHandler handler)
 {
   m_Root.AddRoute(method, path, handler);
+}
+
+void App::impl::OnWrite(uv_write_t *req, int status)
+{
+  delete req->bufs;
+  delete req;
+  uv_close((uv_handle_t *)req->handle, App::impl::OnCloseConn);
 }
 
 void App::impl::OnCloseConn(uv_handle_t *client)

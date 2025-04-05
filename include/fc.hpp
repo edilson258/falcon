@@ -11,6 +11,9 @@ enum class Method
 {
   GET = 1,
   POST,
+  PUT,
+  DELETE,
+  PATCH,
   // used internally to know how many routes are, must be the last
   COUNT,
 };
@@ -61,6 +64,15 @@ public:
   ~App();
 
   void Get(const std::string, PathHandler);
+  void Post(const std::string, PathHandler);
+  void Put(const std::string, PathHandler);
+  void Delete(const std::string, PathHandler);
+  void Patch(const std::string, PathHandler);
+  void Options(const std::string, PathHandler);
+  void Head(const std::string, PathHandler);
+  void Trace(const std::string, PathHandler);
+  void Connect(const std::string, PathHandler);
+
   int Listen(const std::string, std::function<void()>);
 
 private:

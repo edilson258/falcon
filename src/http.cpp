@@ -1,4 +1,5 @@
 #include "http.hpp"
+#include <cstring>
 
 namespace fc
 {
@@ -21,7 +22,26 @@ int HttpParser::llhttpOnURL(llhttp_t *p, const char *at, size_t len)
 int HttpParser::llhttpOnMethod(llhttp_t *p, const char *at, size_t len)
 {
   Req *req = (Req *)p->data;
-  req->m_Method = Method::GET;
+  if (strncmp("GET", at, len))
+  {
+    req->m_Method = Method::GET;
+  }
+  else if (strncmp("POST", at, len))
+  {
+    req->m_Method = Method::POST;
+  }
+  else if (strncmp("PUT", at, len))
+  {
+    req->m_Method = Method::PUT;
+  }
+  else if (strncmp("DELETE", at, len))
+  {
+    req->m_Method = Method::DELETE;
+  }
+  else
+  {
+    return HPE_INVALID_METHOD;
+  }
   return HPE_OK;
 }
 
