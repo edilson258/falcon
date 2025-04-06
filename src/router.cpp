@@ -1,9 +1,12 @@
-#include "router.hpp"
 #include <cstring>
 #include <stdexcept>
 
+#include "fc.hpp"
+#include "router.hpp"
+
 namespace fc
 {
+
 std::string Router::NormalizePath(const std::string_view &input)
 {
   bool prevSlash = false;
@@ -67,7 +70,7 @@ void Router::AddRoute(Method method, const std::string path, PathHandler handler
     }
     if (!found)
     {
-      Frag *newFrag = new Frag(type, frag);
+      Frag *newFrag = new Frag(type, FragType::DYNAMIC == type ? frag.substr(1) : frag);
       if (prev)
       {
         prev->m_Next = newFrag;
@@ -87,14 +90,7 @@ void Router::AddRoute(Method method, const std::string path, PathHandler handler
   current->m_Handlers[static_cast<int>(method)] = handler;
 }
 
-struct MatchResult
-{
-  bool m_HasMatch;
-  FragType m_Type;
-  std::unordered_map<std::string, std::string> m_DynParams;
-};
-
-PathHandler Router::MatchRoute(Method method, const std::string_view &path) const
+PathHandler Router::MatchRoute(Method method, const std::string_view &path, Req &req) const
 {
   auto fragments = FragmentPath(path);
   const Frag *current = &m_Root;
@@ -107,7 +103,10 @@ PathHandler Router::MatchRoute(Method method, const std::string_view &path) cons
       switch (child->m_Type)
       {
       case FragType::STATIC: found = frag == child->m_Label; break;
-      case FragType::DYNAMIC: found = true; break;
+      case FragType::DYNAMIC:
+        found = true;
+        req.m_Params[child->m_Label] = frag;
+        break;
       case FragType::WILDCARD: return child->m_Handlers[static_cast<int>(method)];
       }
       if (found)
@@ -124,4 +123,5 @@ PathHandler Router::MatchRoute(Method method, const std::string_view &path) cons
   }
   return current->m_Handlers.at((int)method);
 }
+
 } // namespace fc

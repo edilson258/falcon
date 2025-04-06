@@ -1,4 +1,3 @@
-#include <array>
 #include <cstring>
 #include <iostream>
 #include <string>
@@ -153,11 +152,15 @@ void App::impl::ParseHttpRequest(Req req)
 
 void App::impl::MatchRequestToHandler(Req req)
 {
-  auto handler = m_Root.MatchRoute(req.GetMethod(), req.GetPath());
+  auto handler = m_Root.MatchRoute(req.GetMethod(), req.GetPath(), req);
   if (handler)
   {
     auto res = (handler)(req);
     HandleResponse(req, res);
+  }
+  else
+  {
+    std::cout << "No match\n";
   }
 }
 

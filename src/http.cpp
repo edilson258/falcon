@@ -22,19 +22,19 @@ int HttpParser::llhttpOnURL(llhttp_t *p, const char *at, size_t len)
 int HttpParser::llhttpOnMethod(llhttp_t *p, const char *at, size_t len)
 {
   Req *req = (Req *)p->data;
-  if (strncmp("GET", at, len))
+  if (strncmp("GET", at, len) == 0)
   {
     req->m_Method = Method::GET;
   }
-  else if (strncmp("POST", at, len))
+  else if (strncmp("POST", at, len) == 0)
   {
     req->m_Method = Method::POST;
   }
-  else if (strncmp("PUT", at, len))
+  else if (strncmp("PUT", at, len) == 0)
   {
     req->m_Method = Method::PUT;
   }
-  else if (strncmp("DELETE", at, len))
+  else if (strncmp("DELETE", at, len) == 0)
   {
     req->m_Method = Method::DELETE;
   }

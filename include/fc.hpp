@@ -10,12 +10,13 @@ namespace fc
 enum class Method
 {
   GET = 1,
-  POST,
-  PUT,
-  DELETE,
-  PATCH,
-  // used internally to know how many routes are, must be the last
-  COUNT,
+  POST = 2,
+  PUT = 3,
+  DELETE = 4,
+  PATCH = 5,
+
+  // used internally to keep track of methods len
+  COUNT = 5,
 };
 
 struct Req
@@ -27,6 +28,7 @@ public:
   const std::string_view &GetRaw() const { return m_Raw; };
   const std::string_view &GetPath() const { return m_Path; }
   const void *GetRemoteSock() const { return m_UVRemoteSock; }
+  const std::string *GetParam(const std::string &key) const;
 
 private:
   Method m_Method;
@@ -34,10 +36,13 @@ private:
   std::string_view m_Raw;
   std::string_view m_Path;
   std::string_view m_RawBody;
+  std::unordered_map<std::string, std::string> m_Params;
 
   Req(void *remote, std::string_view raw) : m_UVRemoteSock(remote), m_Raw(raw) {};
-  friend Req RequestFactory(void *remote, std::string_view raw);
+
+  friend struct Router;
   friend struct HttpParser;
+  friend Req RequestFactory(void *remote, std::string_view raw);
 };
 
 struct Res

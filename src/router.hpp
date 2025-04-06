@@ -4,6 +4,7 @@
 
 namespace fc
 {
+
 enum class FragType
 {
   STATIC = 1,
@@ -16,7 +17,7 @@ struct Frag
 public:
   FragType m_Type;
   std::string m_Label;
-  std::array<PathHandler, (int)Method::COUNT> m_Handlers;
+  std::array<PathHandler, static_cast<int>(Method::COUNT)> m_Handlers;
 
   Frag *m_Next;
   Frag *m_Child;
@@ -36,7 +37,7 @@ public:
   Router() = default;
 
   void AddRoute(Method method, const std::string, PathHandler);
-  PathHandler MatchRoute(Method method, const std::string_view &) const;
+  PathHandler MatchRoute(Method method, const std::string_view &, Req &) const;
 
   static std::vector<std::string> FragmentPath(const std::string_view &);
   static std::string NormalizePath(const std::string_view &);
