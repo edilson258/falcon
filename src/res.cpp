@@ -2,11 +2,9 @@
 #include "fc.hpp"
 #include "templates.hpp"
 
-namespace fc
-{
+namespace fc {
 
-Res Res::Ok()
-{
+Res Res::Ok() {
   return Res(templates::OK_RESPONSE);
 }
 

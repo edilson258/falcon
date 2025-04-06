@@ -4,23 +4,20 @@
 #include <string>
 #include <string_view>
 
-namespace fc
-{
+namespace fc {
 
-enum class Method
-{
+enum class Method {
   GET = 1,
-  POST = 2,
-  PUT = 3,
-  DELETE = 4,
-  PATCH = 5,
+  POST,
+  PUT,
+  DELETE,
+  PATCH,
 
   // used internally to keep track of methods len
-  COUNT = 5,
+  COUNT,
 };
 
-struct Req
-{
+struct Req {
 public:
   explicit Req() = delete;
 
@@ -45,8 +42,7 @@ private:
   friend Req RequestFactory(void *remote, std::string_view raw);
 };
 
-struct Res
-{
+struct Res {
 public:
   static Res Ok();
 
@@ -62,8 +58,7 @@ private:
 
 using PathHandler = std::function<Res(Req)>;
 
-struct App
-{
+struct App {
 public:
   App();
   ~App();

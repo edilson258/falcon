@@ -3,17 +3,14 @@
 #include "fc.hpp"
 #include "llhttp.h"
 
-namespace fc
-{
+namespace fc {
 
-struct HttpParser
-{
+struct HttpParser {
 public:
   llhttp_t m_llhttpInstance;
   llhttp_settings_t m_llhttpSettings;
 
-  HttpParser()
-  {
+  HttpParser() {
     llhttp_settings_init(&m_llhttpSettings);
     m_llhttpSettings.on_url = HttpParser::llhttpOnURL;
     m_llhttpSettings.on_method = HttpParser::llhttpOnMethod;

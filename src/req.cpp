@@ -1,13 +1,10 @@
 #include "req.hpp"
 
-namespace fc
-{
+namespace fc {
 
-const std::string *Req::GetParam(const std::string &key) const
-{
+const std::string *Req::GetParam(const std::string &key) const {
   auto it = m_Params.find(key);
-  if (it != m_Params.end())
-  {
+  if (it != m_Params.end()) {
     return &it->second;
   }
   return nullptr;
