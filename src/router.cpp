@@ -1,12 +1,12 @@
 #include <cstring>
 #include <stdexcept>
 
-#include "fc.hpp"
-#include "router.hpp"
+#include "include/fc.hpp"
+#include "src/router.hpp"
 
 namespace fc {
 
-std::string Router::NormalizePath(const std::string_view &input) {
+std::string router::normalize_path(const std::string_view &input) {
   bool prevSlash = false;
   std::string output;
   for (auto chr : input) {
@@ -19,9 +19,9 @@ std::string Router::NormalizePath(const std::string_view &input) {
   return output;
 }
 
-std::vector<std::string> Router::FragmentPath(const std::string_view &path) {
+std::vector<std::string> router::split_path(const std::string_view &path) {
   std::vector<std::string> frags;
-  auto normalPath = NormalizePath(path);
+  auto normalPath = normalize_path(path);
   char *frag = std::strtok((char *)normalPath.c_str(), "/");
   while (frag) {
     frags.push_back(frag);
@@ -30,75 +30,75 @@ std::vector<std::string> Router::FragmentPath(const std::string_view &path) {
   return frags;
 }
 
-void Router::AddRoute(Method method, const std::string path, PathHandler handler) {
-  auto pathFragments = FragmentPath(path);
-  Frag *current = &m_Root;
+void router::add(method method, const std::string path, path_handler handler) {
+  auto pathFragments = split_path(path);
+  frag *current = &m_root;
 
-  for (const auto &frag : pathFragments) {
-    FragType type;
-    switch (frag.at(0)) {
-    case '*': type = FragType::WILDCARD; break;
-    case ':': type = FragType::DYNAMIC; break;
-    default: type = FragType::STATIC; break;
+  for (const auto &frg : pathFragments) {
+    frag_type type;
+    switch (frg.at(0)) {
+    case '*': type = frag_type::WILDCARD; break;
+    case ':': type = frag_type::DYNAMIC; break;
+    default: type = frag_type::STATIC; break;
     }
 
     bool found = false;
-    Frag *prev = nullptr;
-    Frag *child = current->m_Child;
+    frag *prev = nullptr;
+    frag *child = current->m_child;
     while (child) {
-      if ((type == FragType::STATIC && child->m_Label == frag) || (type != FragType::STATIC && child->m_Type == type)) {
-        if (type == FragType::DYNAMIC && child->m_Label != frag) {
-          throw std::runtime_error("Conflicting dynamic segment names: " + child->m_Label + " vs " + frag);
+      if ((type == frag_type::STATIC && child->m_label == frg) || (type != frag_type::STATIC && child->m_type == type)) {
+        if (type == frag_type::DYNAMIC && child->m_label != frg) {
+          throw std::runtime_error("Conflicting dynamic segment names: " + child->m_label + " vs " + frg);
         }
         found = true;
         break;
       }
       prev = child;
-      child = child->m_Next;
+      child = child->m_next;
     }
     if (!found) {
-      Frag *newFrag = new Frag(type, FragType::DYNAMIC == type ? frag.substr(1) : frag);
+      frag *newFrag = new frag(type, frag_type::DYNAMIC == type ? frg.substr(1) : frg);
       if (prev) {
-        prev->m_Next = newFrag;
+        prev->m_next = newFrag;
       } else {
-        current->m_Child = newFrag;
+        current->m_child = newFrag;
       }
       child = newFrag;
     }
     current = child;
   }
-  if (current->m_Handlers[static_cast<int>(method)] != nullptr) {
+  if (current->m_handlers[static_cast<int>(method)] != nullptr) {
     throw std::runtime_error("Duplicate route for method " + std::to_string(static_cast<int>(method)) + " at path: " + path);
   }
-  current->m_Handlers[static_cast<int>(method)] = handler;
+  current->m_handlers[static_cast<int>(method)] = handler;
 }
 
-PathHandler Router::MatchRoute(Method method, const std::string_view &path, Req &req) const {
-  auto fragments = FragmentPath(path);
-  const Frag *current = &m_Root;
-  for (auto &frag : fragments) {
+path_handler router::match(method method, const std::string_view &path, request &req) const {
+  auto fragments = split_path(path);
+  const frag *current = &m_root;
+  for (auto &frg : fragments) {
     bool found = false;
-    const Frag *child = current->m_Child;
+    const frag *child = current->m_child;
     while (child && !found) {
-      switch (child->m_Type) {
-      case FragType::STATIC: found = frag == child->m_Label; break;
-      case FragType::DYNAMIC:
+      switch (child->m_type) {
+      case frag_type::STATIC: found = frg == child->m_label; break;
+      case frag_type::DYNAMIC:
         found = true;
-        req.m_Params[child->m_Label] = frag;
+        req.m_params[child->m_label] = frg;
         break;
-      case FragType::WILDCARD: return child->m_Handlers[static_cast<int>(method)];
+      case frag_type::WILDCARD: return child->m_handlers[static_cast<int>(method)];
       }
       if (found) {
         current = child;
         break;
       }
-      child = child->m_Next;
+      child = child->m_next;
     }
     if (!found) {
       return nullptr;
     }
   }
-  return current->m_Handlers.at((int)method);
+  return current->m_handlers.at((int)method);
 }
 
 } // namespace fc

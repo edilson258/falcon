@@ -1,12 +1,16 @@
 #pragma once
 
 #include <functional>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <sys/stat.h>
+
+#include "external/simdjson/simdjson.h"
 
 namespace fc {
 
-enum class Method {
+enum class method {
   GET = 1,
   POST,
   PUT,
@@ -17,69 +21,76 @@ enum class Method {
   COUNT,
 };
 
-struct Req {
-public:
-  explicit Req() = delete;
-
-  const Method GetMethod() const { return m_Method; }
-  const std::string_view &GetRaw() const { return m_Raw; };
-  const std::string_view &GetPath() const { return m_Path; }
-  const void *GetRemoteSock() const { return m_UVRemoteSock; }
-  const std::string *GetParam(const std::string &key) const;
-
-private:
-  Method m_Method;
-  void *m_UVRemoteSock;
-  std::string_view m_Raw;
-  std::string_view m_Path;
-  std::string_view m_RawBody;
-  std::unordered_map<std::string, std::string> m_Params;
-
-  Req(void *remote, std::string_view raw) : m_UVRemoteSock(remote), m_Raw(raw) {};
-
-  friend struct Router;
-  friend struct HttpParser;
-  friend Req RequestFactory(void *remote, std::string_view raw);
+enum class status {
+  OK = 200,
+  NOT_FOUND = 404,
+  INTERNAL_SERVER_ERROR = 500,
 };
 
-struct Res {
+struct request {
 public:
-  static Res Ok();
+  explicit request() = delete;
 
-  const std::string &GetRaw() const { return m_Raw; }
+  method get_method() const { return m_method; }
+  const std::string_view &get_raw() const { return m_raw; };
+  const std::string_view &get_path() const { return m_path; }
+  const void *get_remote() const { return m_remote; }
+  std::optional<const std::string_view> get_param(const std::string &key) const;
+  bool bind_to_json(simdjson::dom::element *);
 
 private:
-  std::string m_Raw;
+  void *m_remote;
 
-  Res(std::string raw) : m_Raw(std::move(raw)) {}
+  method m_method;
+  std::string_view m_raw;
+  std::string_view m_path;
+  std::string_view m_raw_body;
+  std::unordered_map<std::string, std::string> m_params;
 
-  friend struct impl;
+  request(void *remote, std::string_view raw) : m_remote(remote), m_raw(raw) {};
+
+  friend struct router;
+  friend struct http_parser;
+  friend request request_factory(void *remote, std::string_view raw);
 };
 
-using PathHandler = std::function<Res(Req)>;
-
-struct App {
+struct response {
 public:
-  App();
-  ~App();
+  static const response ok();
 
-  void Get(const std::string, PathHandler);
-  void Post(const std::string, PathHandler);
-  void Put(const std::string, PathHandler);
-  void Delete(const std::string, PathHandler);
-  void Patch(const std::string, PathHandler);
-  void Options(const std::string, PathHandler);
-  void Head(const std::string, PathHandler);
-  void Trace(const std::string, PathHandler);
-  void Connect(const std::string, PathHandler);
+  void set_status(status);
+  void set_content_type(const std::string);
 
-  int Listen(const std::string, std::function<void()>);
+  const std::string &to_string() const { return m_raw; }
+
+private:
+  std::string m_raw;
+  status m_status;
+  std::string m_content_type;
+
+  response(std::string raw) : m_raw(std::move(raw)) {}
+};
+
+using path_handler = std::function<response(request)>;
+
+struct app {
+public:
+  app();
+  ~app();
+
+  void get(const std::string, path_handler);
+  void post(const std::string, path_handler);
+  void put(const std::string, path_handler);
+  void delet(const std::string, path_handler);
+  void patch(const std::string, path_handler);
+
+  int listen(const std::string, std::function<void()>);
 
 private:
   struct impl;
   impl *m_PImpl;
 
-  friend void ParseHttpRequest(Req);
+  friend void parse_http_request(request);
   friend struct impl;
 };
 } // namespace fc

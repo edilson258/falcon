@@ -1,41 +1,41 @@
 #pragma once
 
-#include "fc.hpp"
+#include "include/fc.hpp"
 
 namespace fc {
 
-enum class FragType {
+enum class frag_type {
   STATIC = 1,
   DYNAMIC = 2,
   WILDCARD = 3,
 };
 
-struct Frag {
+struct frag {
 public:
-  FragType m_Type;
-  std::string m_Label;
-  std::array<PathHandler, static_cast<int>(Method::COUNT)> m_Handlers;
+  frag_type m_type;
+  std::string m_label;
+  std::array<path_handler, static_cast<int>(method::COUNT)> m_handlers;
 
-  Frag *m_Next;
-  Frag *m_Child;
+  frag *m_next;
+  frag *m_child;
 
-  Frag() = default;
-  Frag(FragType type, std::string label) : m_Type(type), m_Label(label), m_Next(nullptr), m_Child(nullptr) {
-    std::fill(m_Handlers.begin(), m_Handlers.end(), nullptr);
+  frag() = default;
+  frag(frag_type type, std::string label) : m_type(type), m_label(label), m_next(nullptr), m_child(nullptr) {
+    std::fill(m_handlers.begin(), m_handlers.end(), nullptr);
   };
 };
 
-struct Router {
+struct router {
 public:
-  Frag m_Root;
+  frag m_root;
 
-  Router() = default;
+  router() = default;
 
-  void AddRoute(Method method, const std::string, PathHandler);
-  PathHandler MatchRoute(Method method, const std::string_view &, Req &) const;
+  void add(method method, const std::string, path_handler);
+  path_handler match(method method, const std::string_view &, request &) const;
 
-  static std::vector<std::string> FragmentPath(const std::string_view &);
-  static std::string NormalizePath(const std::string_view &);
+  static std::vector<std::string> split_path(const std::string_view &);
+  static std::string normalize_path(const std::string_view &);
 };
 
 } // namespace fc

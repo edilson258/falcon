@@ -1,32 +1,32 @@
 #pragma once
 
-#include "fc.hpp"
-#include "llhttp.h"
+#include "external/llhttp/llhttp.h"
+#include "include/fc.hpp"
 
 namespace fc {
 
-struct HttpParser {
+struct http_parser {
 public:
-  llhttp_t m_llhttpInstance;
-  llhttp_settings_t m_llhttpSettings;
+  llhttp_t m_llhttp_instance;
+  llhttp_settings_t m_llhttp_settings;
 
-  HttpParser() {
-    llhttp_settings_init(&m_llhttpSettings);
-    m_llhttpSettings.on_url = HttpParser::llhttpOnURL;
-    m_llhttpSettings.on_method = HttpParser::llhttpOnMethod;
-    m_llhttpSettings.on_body = HttpParser::llhttpOnBody;
-    m_llhttpSettings.on_header_field = HttpParser::llhttpOnHeaderField;
-    m_llhttpSettings.on_header_value = HttpParser::llhttpOnHeaderValue;
-    llhttp_init(&m_llhttpInstance, HTTP_REQUEST, &m_llhttpSettings);
+  http_parser() {
+    llhttp_settings_init(&m_llhttp_settings);
+    m_llhttp_settings.on_url = http_parser::llhttp_on_url;
+    m_llhttp_settings.on_method = http_parser::llhttp_on_method;
+    m_llhttp_settings.on_body = http_parser::llhttp_on_body;
+    m_llhttp_settings.on_header_field = http_parser::llhttp_on_header_field;
+    m_llhttp_settings.on_header_value = http_parser::llhttp_on_header_value;
+    llhttp_init(&m_llhttp_instance, HTTP_REQUEST, &m_llhttp_settings);
   }
 
-  enum llhttp_errno Parse(Req &);
+  enum llhttp_errno parse(request &);
 
-  static int llhttpOnURL(llhttp_t *p, const char *at, size_t len);
-  static int llhttpOnMethod(llhttp_t *p, const char *at, size_t len);
-  static int llhttpOnBody(llhttp_t *p, const char *at, size_t len);
-  static int llhttpOnHeaderField(llhttp_t *p, const char *at, size_t len);
-  static int llhttpOnHeaderValue(llhttp_t *p, const char *at, size_t len);
+  static int llhttp_on_url(llhttp_t *p, const char *at, size_t len);
+  static int llhttp_on_method(llhttp_t *p, const char *at, size_t len);
+  static int llhttp_on_body(llhttp_t *p, const char *at, size_t len);
+  static int llhttp_on_header_field(llhttp_t *p, const char *at, size_t len);
+  static int llhttp_on_header_value(llhttp_t *p, const char *at, size_t len);
 };
 
 } // namespace fc

@@ -1,8 +1,42 @@
-#include "include/fc.hpp"
+#include <cassert>
 #include <iostream>
+#include <string>
+#include <vector>
+
+#include "include/fc.hpp"
+
+struct User {
+public:
+  std::string email;
+  std::string password;
+
+  User(std::string email, std::string password) : email(email), password(password) {};
+};
+
+std::vector<User> users;
+
+fc::response create(fc::request req) {
+  simdjson::dom::element doc;
+  assert(req.bind_to_json(&doc));
+  User user(doc["email"].get_string().value().data(), doc["password"].get_string().value().data());
+  users.push_back(user);
+  return fc::response::ok();
+}
+
+fc::response find_many(fc::request req) {
+  return fc::response::ok();
+}
+
+fc::response find_by_id(fc::request req) {
+  return fc::response::ok();
+}
 
 int main(int argc, char *argv[]) {
-  fc::App app;
-  app.Get("/users/:id", [](fc::Req req) { std::cout << *req.GetParam("id") << "\n"; return fc::Res::Ok(); });
-  app.Listen(":8000", []() { std::cout << "Http server running...\n"; });
+  fc::app app;
+
+  app.get("/users", find_many);
+  app.get("/users/:id", find_by_id);
+  app.post("/users", create);
+
+  app.listen(":8000", []() { std::cout << "Http server running...\n"; });
 }

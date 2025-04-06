@@ -2,11 +2,10 @@
 
 #include <string_view>
 
-#include "fc.hpp"
+#include "include/fc.hpp"
 
-namespace fc
-{
+namespace fc {
 
-Req RequestFactory(void *remote, std::string_view sv);
+request request_factory(void *remote, std::string_view raw);
 
 } // namespace fc

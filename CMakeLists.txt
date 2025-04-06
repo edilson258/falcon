@@ -14,11 +14,12 @@ find_library(
   NAMES llhttp
   PATHS "${CMAKE_SOURCE_DIR}/external/llhttp")
 
-file(GLOB_RECURSE falcon_src "${CMAKE_SOURCE_DIR}/src/*.cpp")
-add_library(falcon STATIC ${falcon_src})
-target_include_directories(falcon PUBLIC ${CMAKE_SOURCE_DIR}/include)
-target_include_directories(falcon PUBLIC ${CMAKE_SOURCE_DIR}/external/llhttp)
+file(GLOB_RECURSE FALCON_SOURCES "${CMAKE_SOURCE_DIR}/src/*.cpp")
+file(GLOB SIMDJSON_SOURCES "${CMAKE_SOURCE_DIR}/external/simdjson/*.cpp")
+
+add_library(falcon STATIC ${FALCON_SOURCES} ${SIMDJSON_SOURCES})
+target_include_directories(falcon PRIVATE ${CMAKE_SOURCE_DIR}/)
 
 add_executable(example example.cpp)
 target_link_libraries(example PRIVATE falcon uv ${llhttp_parser})
-target_include_directories(example PUBLIC ${CMAKE_SOURCE_DIR}/include)
+target_include_directories(example PRIVATE ${CMAKE_SOURCE_DIR}/)

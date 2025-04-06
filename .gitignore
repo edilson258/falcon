@@ -5,3 +5,4 @@ __pycache__/
 .clangd
 main.c
 a.out
+_others/

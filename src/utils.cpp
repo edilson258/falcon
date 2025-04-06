@@ -3,7 +3,7 @@
 
 #include "utils.hpp"
 
-std::tuple<std::string, std::string> matchHostAndPort(const std::string &input) {
+std::tuple<std::string, std::string> split_address(const std::string &input) {
   std::smatch match;
   static const std::regex pattern(R"((.*?):?(\d+))");
   if (std::regex_match(input, match, pattern)) {
