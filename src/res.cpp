@@ -1,19 +1,28 @@
-#include "res.hpp"
+#include <cstring>
+#include <format>
+#include <string>
+
+#include "http.hpp"
 #include "include/fc.hpp"
-#include "src/templates.hpp"
+#include "templates.hpp"
 
 namespace fc {
 
-const response response::ok() {
-  return response(templates::OK_RESPONSE);
+const response response::ok(status stats) {
+  const char *stats_str = status_to_string(stats);
+  return response(std::move(std::format(templates::OK_RESPONSE, static_cast<int>(stats), stats_str, strlen(stats_str), stats_str)));
+}
+
+const response response::json(std::string body, status stats) {
+  return response(std::move(std::format(templates::HTTP_RESPONSE_FORMAT, static_cast<int>(stats), status_to_string(stats), "application/json", body.length(), body)));
 }
 
 void response::set_status(status status) {
   m_status = status;
 }
 
-void response::set_content_type(const std::string cont_type) {
-  m_content_type = cont_type;
+void response::set_content_type(const std::string content_type) {
+  m_content_type = content_type;
 }
 
 } // namespace fc

@@ -23,6 +23,7 @@ enum class method {
 
 enum class status {
   OK = 200,
+  CREATED = 201,
   NOT_FOUND = 404,
   INTERNAL_SERVER_ERROR = 500,
 };
@@ -35,7 +36,7 @@ public:
   const std::string_view &get_raw() const { return m_raw; };
   const std::string_view &get_path() const { return m_path; }
   const void *get_remote() const { return m_remote; }
-  std::optional<const std::string_view> get_param(const std::string &key) const;
+  std::optional<const std::string> get_param(const std::string &key) const;
   bool bind_to_json(simdjson::dom::element *);
 
 private:
@@ -56,7 +57,8 @@ private:
 
 struct response {
 public:
-  static const response ok();
+  static const response ok(status stats = status::OK);
+  static const response json(std::string body = "{}", status status = status::OK);
 
   void set_status(status);
   void set_content_type(const std::string);

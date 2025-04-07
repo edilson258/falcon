@@ -7,13 +7,12 @@
 #include <uv/unix.h>
 
 #include "external/llhttp/llhttp.h"
-// #include "external/simdjson/simdjson.h"
 
+#include "http.hpp"
 #include "include/fc.hpp"
-#include "src/http.hpp"
-#include "src/req.hpp"
-#include "src/router.hpp"
-#include "src/utils.hpp"
+#include "req.hpp"
+#include "router.hpp"
+#include "utils.hpp"
 
 #define FC_BACKLOG (128)
 #define MAX_REQ_LEN (1024 * 1024 * 5) // 5 MB

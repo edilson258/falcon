@@ -3,6 +3,6 @@ build/
 __pycache__/
 .vscode/
 .clangd
-main.c
+main.cpp
 a.out
 _others/

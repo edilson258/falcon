@@ -1,49 +1,49 @@
 [
 {
   "directory": "/home/edilson/code/local/falcon/build",
-  "command": "/usr/bin/c++  -I/home/edilson/code/local/falcon -g -o CMakeFiles/falcon.dir/src/fc.cpp.o -c /home/edilson/code/local/falcon/src/fc.cpp",
+  "command": "/usr/bin/c++  -I/home/edilson/code/local/falcon -g -std=gnu++20 -o CMakeFiles/falcon.dir/src/fc.cpp.o -c /home/edilson/code/local/falcon/src/fc.cpp",
   "file": "/home/edilson/code/local/falcon/src/fc.cpp",
   "output": "CMakeFiles/falcon.dir/src/fc.cpp.o"
 },
 {
   "directory": "/home/edilson/code/local/falcon/build",
-  "command": "/usr/bin/c++  -I/home/edilson/code/local/falcon -g -o CMakeFiles/falcon.dir/src/http.cpp.o -c /home/edilson/code/local/falcon/src/http.cpp",
+  "command": "/usr/bin/c++  -I/home/edilson/code/local/falcon -g -std=gnu++20 -o CMakeFiles/falcon.dir/src/http.cpp.o -c /home/edilson/code/local/falcon/src/http.cpp",
   "file": "/home/edilson/code/local/falcon/src/http.cpp",
   "output": "CMakeFiles/falcon.dir/src/http.cpp.o"
 },
 {
   "directory": "/home/edilson/code/local/falcon/build",
-  "command": "/usr/bin/c++  -I/home/edilson/code/local/falcon -g -o CMakeFiles/falcon.dir/src/req.cpp.o -c /home/edilson/code/local/falcon/src/req.cpp",
+  "command": "/usr/bin/c++  -I/home/edilson/code/local/falcon -g -std=gnu++20 -o CMakeFiles/falcon.dir/src/req.cpp.o -c /home/edilson/code/local/falcon/src/req.cpp",
   "file": "/home/edilson/code/local/falcon/src/req.cpp",
   "output": "CMakeFiles/falcon.dir/src/req.cpp.o"
 },
 {
   "directory": "/home/edilson/code/local/falcon/build",
-  "command": "/usr/bin/c++  -I/home/edilson/code/local/falcon -g -o CMakeFiles/falcon.dir/src/res.cpp.o -c /home/edilson/code/local/falcon/src/res.cpp",
+  "command": "/usr/bin/c++  -I/home/edilson/code/local/falcon -g -std=gnu++20 -o CMakeFiles/falcon.dir/src/res.cpp.o -c /home/edilson/code/local/falcon/src/res.cpp",
   "file": "/home/edilson/code/local/falcon/src/res.cpp",
   "output": "CMakeFiles/falcon.dir/src/res.cpp.o"
 },
 {
   "directory": "/home/edilson/code/local/falcon/build",
-  "command": "/usr/bin/c++  -I/home/edilson/code/local/falcon -g -o CMakeFiles/falcon.dir/src/router.cpp.o -c /home/edilson/code/local/falcon/src/router.cpp",
+  "command": "/usr/bin/c++  -I/home/edilson/code/local/falcon -g -std=gnu++20 -o CMakeFiles/falcon.dir/src/router.cpp.o -c /home/edilson/code/local/falcon/src/router.cpp",
   "file": "/home/edilson/code/local/falcon/src/router.cpp",
   "output": "CMakeFiles/falcon.dir/src/router.cpp.o"
 },
 {
   "directory": "/home/edilson/code/local/falcon/build",
-  "command": "/usr/bin/c++  -I/home/edilson/code/local/falcon -g -o CMakeFiles/falcon.dir/src/utils.cpp.o -c /home/edilson/code/local/falcon/src/utils.cpp",
+  "command": "/usr/bin/c++  -I/home/edilson/code/local/falcon -g -std=gnu++20 -o CMakeFiles/falcon.dir/src/utils.cpp.o -c /home/edilson/code/local/falcon/src/utils.cpp",
   "file": "/home/edilson/code/local/falcon/src/utils.cpp",
   "output": "CMakeFiles/falcon.dir/src/utils.cpp.o"
 },
 {
   "directory": "/home/edilson/code/local/falcon/build",
-  "command": "/usr/bin/c++  -I/home/edilson/code/local/falcon -g -o CMakeFiles/falcon.dir/external/simdjson/simdjson.cpp.o -c /home/edilson/code/local/falcon/external/simdjson/simdjson.cpp",
+  "command": "/usr/bin/c++  -I/home/edilson/code/local/falcon -g -std=gnu++20 -o CMakeFiles/falcon.dir/external/simdjson/simdjson.cpp.o -c /home/edilson/code/local/falcon/external/simdjson/simdjson.cpp",
   "file": "/home/edilson/code/local/falcon/external/simdjson/simdjson.cpp",
   "output": "CMakeFiles/falcon.dir/external/simdjson/simdjson.cpp.o"
 },
 {
   "directory": "/home/edilson/code/local/falcon/build",
-  "command": "/usr/bin/c++  -I/home/edilson/code/local/falcon -g -o CMakeFiles/example.dir/example.cpp.o -c /home/edilson/code/local/falcon/example.cpp",
+  "command": "/usr/bin/c++  -I/home/edilson/code/local/falcon -g -std=gnu++20 -o CMakeFiles/example.dir/example.cpp.o -c /home/edilson/code/local/falcon/example.cpp",
   "file": "/home/edilson/code/local/falcon/example.cpp",
   "output": "CMakeFiles/example.dir/example.cpp.o"
 }

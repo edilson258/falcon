@@ -48,4 +48,14 @@ int http_parser::llhttp_on_header_value(llhttp_t *p, const char *at, size_t len)
   return HPE_OK;
 }
 
+const char *status_to_string(status status) {
+  switch (status) {
+  case status::OK: return "OK";
+  case status::CREATED: return "Created";
+  case status::NOT_FOUND: return "Not Found";
+  case status::INTERNAL_SERVER_ERROR: return "Internal Server Error";
+  }
+  return "unknown http status";
+}
+
 } // namespace fc

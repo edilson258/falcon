@@ -29,4 +29,6 @@ public:
   static int llhttp_on_header_value(llhttp_t *p, const char *at, size_t len);
 };
 
+const char *status_to_string(status);
+
 } // namespace fc
