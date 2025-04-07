@@ -38,8 +38,8 @@ void router::add(method method, const std::string path, path_handler handler) {
   for (const auto &frg : pathFragments) {
     frag_type type;
     switch (frg.at(0)) {
-    case '*': type = frag_type::WILDCARD; break;
     case ':': type = frag_type::DYNAMIC; break;
+    case '*': type = frag_type::WILDCARD; break;
     default: type = frag_type::STATIC; break;
     }
 
@@ -48,7 +48,7 @@ void router::add(method method, const std::string path, path_handler handler) {
     frag *child = current->m_child;
     while (child) {
       if ((type == frag_type::STATIC && child->m_label == frg) || (type != frag_type::STATIC && child->m_type == type)) {
-        if (type == frag_type::DYNAMIC && child->m_label != frg) {
+        if (type == frag_type::DYNAMIC && child->m_label != frg && child->m_handlers.at((int)method)) {
           throw std::runtime_error("Conflicting dynamic segment names: " + child->m_label + " vs " + frg);
         }
         found = true;

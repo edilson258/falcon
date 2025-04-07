@@ -56,6 +56,7 @@ const char *status_to_string(status status) {
   switch (status) {
   case status::OK: return "OK";
   case status::CREATED: return "Created";
+  case status::NO_CONTENT: return "No Content";
   case status::NOT_FOUND: return "Not Found";
   case status::INTERNAL_SERVER_ERROR: return "Internal Server Error";
   }
