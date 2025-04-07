@@ -20,7 +20,7 @@ public:
     llhttp_init(&m_llhttp_instance, HTTP_REQUEST, &m_llhttp_settings);
   }
 
-  enum llhttp_errno parse(request &);
+  enum llhttp_errno parse(request *);
 
   static int llhttp_on_url(llhttp_t *p, const char *at, size_t len);
   static int llhttp_on_method(llhttp_t *p, const char *at, size_t len);

@@ -5,8 +5,13 @@
 #include <string>
 #include <string_view>
 #include <sys/stat.h>
+#include <vector>
 
 #include "external/simdjson/simdjson.h"
+
+#if (!FC_MAX_PARAMS)
+#define FC_MAX_PARAMS 50
+#endif
 
 namespace fc {
 
@@ -31,10 +36,11 @@ enum class status {
 struct request {
 public:
   explicit request() = delete;
+  ~request();
 
   bool bind_to_json(simdjson::dom::element *);
   method get_method() const { return m_method; }
-  const void *get_remote() const { return m_remote; }
+  const void *get_remote() const { return m_uv_remote; }
   const std::string_view &get_raw() const { return m_raw; };
   const std::string_view &get_path() const { return m_path; }
   std::optional<std::string> get_param(const std::string &) const;
@@ -42,30 +48,18 @@ public:
   std::optional<std::string_view> get_cookie(const std::string &);
 
 private:
-  void *m_remote;
+  const void *m_uv_remote;
 
   method m_method;
   std::string_view m_raw;
   std::string_view m_path;
   std::string_view m_raw_body;
-  std::unordered_map<std::string, std::string> m_params;
-  std::unordered_map<std::string_view, std::string_view> m_headers;
+  std::vector<std::pair<std::string_view, std::string>> m_params;
+  std::vector<std::pair<std::string_view, std::string_view>> m_headers;
+  struct cookies;
+  cookies *m_cookies; // NOTE: clean on destructor
 
-  request(void *remote, std::string_view raw) : m_remote(remote), m_raw(raw) {};
-
-  struct cookies {
-    struct cookie {
-      std::string_view name;
-      std::string_view value;
-    };
-
-    bool parsed = false;
-    std::vector<cookie> m_cookies;
-    void parse(std::string_view header);
-    std::optional<std::string_view> get(std::string_view key) const;
-  };
-
-  cookies m_cookies;
+  request(void *remote, std::string_view raw) : m_uv_remote(remote), m_raw(raw) {};
 
   friend struct router;
   friend struct http_parser;

@@ -1,3 +1,4 @@
+#include <cstdio>
 #include <cstring>
 #include <string_view>
 
@@ -5,9 +6,9 @@
 
 namespace fc {
 
-enum llhttp_errno http_parser::parse(request &req) {
-  m_llhttp_instance.data = &req;
-  enum llhttp_errno err = llhttp_execute(&m_llhttp_instance, req.m_raw.data(), req.m_raw.length());
+enum llhttp_errno http_parser::parse(request *req) {
+  m_llhttp_instance.data = req;
+  enum llhttp_errno err = llhttp_execute(&m_llhttp_instance, req->m_raw.data(), req->m_raw.length());
   llhttp_reset(&m_llhttp_instance);
   return err;
 }
@@ -39,17 +40,15 @@ int http_parser::llhttp_on_body(llhttp_t *p, const char *at, size_t len) {
   return HPE_OK;
 }
 
-std::string_view m_last_header_field;
-
 int http_parser::llhttp_on_header_field(llhttp_t *p, const char *at, size_t len) {
   request *req = (request *)p->data;
-  m_last_header_field = std::string_view(at, len);
+  req->m_headers.push_back({std::string_view(at, len), {}});
   return HPE_OK;
 }
 
 int http_parser::llhttp_on_header_value(llhttp_t *p, const char *at, size_t len) {
   request *req = (request *)p->data;
-  req->m_headers[m_last_header_field] = std::string_view(at, len);
+  req->m_headers.back().second = std::string_view(at, len);
   return HPE_OK;
 }
 

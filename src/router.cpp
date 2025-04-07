@@ -9,11 +9,12 @@ namespace fc {
 std::string router::normalize_path(const std::string_view &input) {
   bool prevSlash = false;
   std::string output;
+  output.reserve(input.length());
   for (auto chr : input) {
     if (('/' == chr && prevSlash) || std::isspace(chr)) {
       continue;
     }
-    prevSlash = chr == '/' ? true : false;
+    prevSlash = (chr == '/');
     output.push_back(chr);
   }
   return output;
@@ -84,7 +85,7 @@ path_handler router::match(request &req) const {
       case frag_type::STATIC: found = frg == child->m_label; break;
       case frag_type::DYNAMIC:
         found = true;
-        req.m_params[child->m_label] = frg;
+        req.m_params.push_back({child->m_label, frg});
         break;
       case frag_type::WILDCARD: return child->m_handlers[static_cast<int>(req.m_method)];
       }

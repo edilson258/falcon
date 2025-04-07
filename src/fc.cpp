@@ -121,9 +121,10 @@ void app::impl::on_read_buf(uv_stream_t *client, long nread, const uv_buf_t *buf
 }
 
 void app::impl::parse_http_request(request req) {
-  enum llhttp_errno err = m_http_parser.parse(req);
-  if (HPE_OK != err) {
+  enum llhttp_errno err = m_http_parser.parse(&req);
+  if (HPE_OK != err && HPE_INVALID_METHOD != err) {
     // send 'bad request' response
+    std::cerr << "[FALCON ERROR]: Faild to parse request, " << llhttp_errno_name(err) << std::endl;
     return;
   }
   match_request_to_handler(std::move(req));

@@ -1,8 +1,10 @@
+#include <algorithm>
 #include <cstddef>
 #include <exception>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 
 #include "external/simdjson/simdjson.h"
 #include "include/fc.hpp"
@@ -11,15 +13,19 @@
 namespace fc {
 
 request request_factory(void *remote, std::string_view sv) { return request(remote, sv); }
+request::~request() {
+  if (m_cookies) delete m_cookies;
+}
 
 std::optional<std::string> request::get_param(const std::string &key) const {
-  if (auto it = m_params.find(key); it != m_params.end()) return it->second;
+  if (auto it = std::find_if(m_params.begin(), m_params.end(), [key](const std::pair<std::string_view, std::string> &p) { return p.first == key; }); it != m_params.end())
+    return it->second;
   return std::nullopt;
 }
 
 std::optional<std::string_view> request::get_header(const std::string &key) const {
-  // make key comp. case insesitive
-  if (auto it = m_headers.find(key); it != m_headers.end()) return it->second;
+  if (auto it = std::find_if(m_headers.begin(), m_headers.end(), [key](const std::pair<std::string_view, std::string_view> &p) { return p.first == key; }); it != m_headers.end())
+    return it->second;
   return std::nullopt;
 }
 
@@ -28,11 +34,14 @@ std::optional<std::string_view> request::get_cookie(const std::string &name) {
   if (!cookies_header.has_value()) {
     return std::nullopt;
   }
-  if (!m_cookies.parsed) {
-    m_cookies.parsed = true;
-    m_cookies.parse(cookies_header.value());
+  if (!m_cookies) {
+    m_cookies = new cookies();
   }
-  return m_cookies.get(name);
+  if (!m_cookies->parsed) {
+    m_cookies->parsed = true;
+    m_cookies->parse(cookies_header.value());
+  }
+  return m_cookies->get(name);
 }
 
 bool request::bind_to_json(simdjson::dom::element *d) {

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string_view>
+
 #include "include/fc.hpp"
 
 namespace fc {
@@ -34,8 +36,8 @@ public:
   void add(method method, const std::string, path_handler);
   path_handler match(request &) const;
 
-  static std::vector<std::string> split_path(const std::string_view &);
   static std::string normalize_path(const std::string_view &);
+  static std::vector<std::string> split_path(const std::string_view &);
 };
 
 } // namespace fc
