@@ -11,7 +11,7 @@
 namespace fc {
 
 enum class method {
-  GET = 1,
+  GET = 0,
   POST,
   PUT,
   DELETE,
@@ -31,6 +31,7 @@ enum class status {
 struct request {
 public:
   explicit request() = delete;
+  ~request();
 
   method get_method() const { return m_method; }
   const std::string_view &get_raw() const { return m_raw; };
@@ -90,7 +91,7 @@ public:
 
 private:
   struct impl;
-  impl *m_PImpl;
+  impl *m_pimpl;
 
   friend void parse_http_request(request);
   friend struct impl;

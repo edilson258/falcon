@@ -73,8 +73,8 @@ void router::add(method method, const std::string path, path_handler handler) {
   current->m_handlers[static_cast<int>(method)] = handler;
 }
 
-path_handler router::match(method method, const std::string_view &path, request &req) const {
-  auto fragments = split_path(path);
+path_handler router::match(request &req) const {
+  auto fragments = split_path(req.m_path);
   const frag *current = &m_root;
   for (auto &frg : fragments) {
     bool found = false;
@@ -86,7 +86,7 @@ path_handler router::match(method method, const std::string_view &path, request 
         found = true;
         req.m_params[child->m_label] = frg;
         break;
-      case frag_type::WILDCARD: return child->m_handlers[static_cast<int>(method)];
+      case frag_type::WILDCARD: return child->m_handlers[static_cast<int>(req.m_method)];
       }
       if (found) {
         current = child;
@@ -98,7 +98,7 @@ path_handler router::match(method method, const std::string_view &path, request 
       return nullptr;
     }
   }
-  return current->m_handlers.at((int)method);
+  return current->m_handlers.at((int)req.m_method);
 }
 
 } // namespace fc

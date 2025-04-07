@@ -21,74 +21,74 @@ namespace fc {
 
 struct app::impl {
 public:
-  router m_Root;
-  http_parser m_HttpParser;
+  router m_router;
+  http_parser m_http_parser;
 
   // The 'm_Loop->data' field always holds a pointer to an object of this struct
-  uv_loop_t *m_Loop;
-  uv_tcp_t m_HostSock;
-  struct sockaddr_in m_Addr;
+  uv_loop_t *m_loop;
+  uv_tcp_t m_host_sock;
+  struct sockaddr_in m_addr;
 
-  impl() : m_Root(), m_HttpParser(), m_Loop(uv_default_loop()) {
-    m_Loop->data = this;
-    uv_tcp_init(m_Loop, &m_HostSock);
+  impl() : m_router(), m_http_parser(), m_loop(uv_default_loop()) {
+    m_loop->data = this;
+    uv_tcp_init(m_loop, &m_host_sock);
   }
 
-  void ParseHttpRequest(request);
-  void MatchRequestToHandler(request);
-  void HandleResponse(request, response);
+  void parse_http_request(request);
+  void match_request_to_handler(request);
+  void send_response(request, response);
 
-  void AddRoute(method method, const std::string path, path_handler handler);
+  void add_route(method method, const std::string path, path_handler handler);
 
   // uv callbacks
-  static void OnConnection(uv_stream_t *server, int status);
-  static void OnAllocBuf(uv_handle_t *client, size_t size, uv_buf_t *buf);
-  static void OnReadBuf(uv_stream_t *client, long nread, const uv_buf_t *buf);
-  static void OnWrite(uv_write_t *req, int status);
-  static void OnCloseConn(uv_handle_t *client);
+  static void on_connection(uv_stream_t *server, int status);
+  static void on_alloc_buf(uv_handle_t *client, size_t size, uv_buf_t *buf);
+  static void on_read_buf(uv_stream_t *client, long nread, const uv_buf_t *buf);
+  static void on_write(uv_write_t *req, int status);
+  static void on_close_conn(uv_handle_t *client);
 };
 
-app::app() : m_PImpl(new app::impl()) {}
-app::~app() { delete m_PImpl; }
+app::app() : m_pimpl(new app::impl()) {}
+app::~app() { delete m_pimpl; }
 
 void app::get(const std::string path, path_handler handler) {
-  m_PImpl->AddRoute(method::GET, path, handler);
+  m_pimpl->add_route(method::GET, path, handler);
 }
 
 void app::post(const std::string path, path_handler handler) {
-  m_PImpl->AddRoute(method::POST, path, handler);
+  m_pimpl->add_route(method::POST, path, handler);
 }
 
 void app::put(const std::string path, path_handler handler) {
-  m_PImpl->AddRoute(method::PUT, path, handler);
+  m_pimpl->add_route(method::PUT, path, handler);
 }
 
 void app::delet(const std::string path, path_handler handler) {
-  m_PImpl->AddRoute(method::DELETE, path, handler);
+  m_pimpl->add_route(method::DELETE, path, handler);
 }
 
 void app::patch(const std::string path, path_handler handler) {
-  m_PImpl->AddRoute(method::PATCH, path, handler);
+  m_pimpl->add_route(method::PATCH, path, handler);
 }
 
 int app::listen(const std::string addr, std::function<void()> callBack) {
   auto [host, port] = split_address(addr);
-  uv_ip4_addr(host.c_str(), std::stoi(port), &m_PImpl->m_Addr);
-  int result = uv_tcp_bind(&m_PImpl->m_HostSock, (const struct sockaddr *)&m_PImpl->m_Addr, 0);
+  uv_ip4_addr(host.c_str(), std::stoi(port), &m_pimpl->m_addr);
+  int result = uv_tcp_bind(&m_pimpl->m_host_sock, (const struct sockaddr *)&m_pimpl->m_addr, 0);
   if (result) {
     std::cerr << "[FALCON ERROR]: Failed to bind at " << addr << ", " << uv_strerror(result) << std::endl;
     return -1;
   }
-  result = uv_listen((uv_stream_t *)&m_PImpl->m_HostSock, FC_BACKLOG, app::impl::OnConnection);
+  result = uv_listen((uv_stream_t *)&m_pimpl->m_host_sock, FC_BACKLOG, app::impl::on_connection);
   if (result) {
     std::cerr << "[FALCON ERROR]: Failed to listen at " << addr << ", " << uv_strerror(result) << std::endl;
     return -1;
   }
   callBack();
-  return uv_run(m_PImpl->m_Loop, UV_RUN_DEFAULT);
+  return uv_run(m_pimpl->m_loop, UV_RUN_DEFAULT);
 }
 
-void app::impl::OnConnection(uv_stream_t *host, int status) {
+void app::impl::on_connection(uv_stream_t *host, int status) {
   if (status < 0) {
     std::cerr << "[FALCON ERROR]: Failed to accept new connection, " << uv_strerror(status) << std::endl;
     return;
@@ -100,63 +100,58 @@ void app::impl::OnConnection(uv_stream_t *host, int status) {
     std::cerr << "[FALCON ERROR]: Failed to accept new connection, " << uv_strerror(result) << std::endl;
     return;
   }
-  uv_read_start((uv_stream_t *)remote, app::impl::OnAllocBuf, app::impl::OnReadBuf);
+  uv_read_start((uv_stream_t *)remote, app::impl::on_alloc_buf, app::impl::on_read_buf);
 }
 
-void app::impl::OnAllocBuf(uv_handle_t *client, size_t size, uv_buf_t *buf) {
+void app::impl::on_alloc_buf(uv_handle_t *client, size_t size, uv_buf_t *buf) {
   buf->len = size;
   buf->base = new char[size];
 }
 
-void app::impl::OnReadBuf(uv_stream_t *client, long nread, const uv_buf_t *buf) {
+void app::impl::on_read_buf(uv_stream_t *client, long nread, const uv_buf_t *buf) {
   uv_read_stop(client);
   if (nread < 0) {
     if (nread != UV_EOF)
       std::cerr << "[FALCON ERROR]: Failed to read remote socket, " << uv_strerror(nread) << std::endl;
     delete[] buf->base;
-    uv_close((uv_handle_t *)client, app::impl::OnCloseConn);
+    uv_close((uv_handle_t *)client, app::impl::on_close_conn);
     return;
   }
-  ((app::impl *)client->loop->data)->ParseHttpRequest(request_factory((void *)client, std::string_view(buf->base, strnlen(buf->base, MAX_REQ_LEN))));
+  ((app::impl *)client->loop->data)->parse_http_request(request_factory((void *)client, std::string_view(buf->base, strnlen(buf->base, MAX_REQ_LEN))));
 }
 
-void app::impl::ParseHttpRequest(request req) {
-  enum llhttp_errno err = m_HttpParser.parse(req);
+void app::impl::parse_http_request(request req) {
+  enum llhttp_errno err = m_http_parser.parse(req);
   if (HPE_OK != err) {
     // send 'bad request' response
     return;
   }
-  MatchRequestToHandler(req);
+  match_request_to_handler(req);
 }
 
-void app::impl::MatchRequestToHandler(request req) {
-  auto handler = m_Root.match(req.get_method(), req.get_path(), req);
-  if (handler) {
-    auto res = (handler)(req);
-    HandleResponse(req, res);
-  } else {
-    std::cout << "No match\n";
-  }
+void app::impl::match_request_to_handler(request req) {
+  if (auto handler = m_router.match(req); handler) return send_response(req, (handler)(req));
+  std::cout << "No match\n";
 }
 
-void app::impl::HandleResponse(request r, response res) {
+void app::impl::send_response(request r, response res) {
   uv_buf_t *write_buf = new uv_buf_t;
   *write_buf = uv_buf_init((char *)res.to_string().c_str(), res.to_string().length());
   uv_write_t *write_req = new uv_write_t;
-  uv_write(write_req, (uv_stream_t *)r.get_remote(), write_buf, 1, app::impl::OnWrite);
+  uv_write(write_req, (uv_stream_t *)r.get_remote(), write_buf, 1, app::impl::on_write);
 }
 
-void app::impl::AddRoute(method method, const std::string path, path_handler handler) {
-  m_Root.add(method, path, handler);
+void app::impl::add_route(method method, const std::string path, path_handler handler) {
+  m_router.add(method, path, handler);
 }
 
-void app::impl::OnWrite(uv_write_t *req, int status) {
+void app::impl::on_write(uv_write_t *req, int status) {
   delete req->bufs;
   delete req;
-  uv_close((uv_handle_t *)req->handle, app::impl::OnCloseConn);
+  uv_close((uv_handle_t *)req->handle, app::impl::on_close_conn);
 }
 
-void app::impl::OnCloseConn(uv_handle_t *client) {
+void app::impl::on_close_conn(uv_handle_t *client) {
   delete client;
 }
 
