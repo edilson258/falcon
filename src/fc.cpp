@@ -44,7 +44,7 @@ public:
   static void on_connection(uv_stream_t *server, int status);
   static void on_alloc_buf(uv_handle_t *client, size_t size, uv_buf_t *buf);
   static void on_read_buf(uv_stream_t *client, long nread, const uv_buf_t *buf);
-  static void on_write(uv_write_t *req, int status);
+  static void on_write_response(uv_write_t *req, int status);
   static void on_close_conn(uv_handle_t *client);
 };
 
@@ -126,26 +126,28 @@ void app::impl::parse_http_request(request req) {
     // send 'bad request' response
     return;
   }
-  match_request_to_handler(req);
+  match_request_to_handler(std::move(req));
 }
 
 void app::impl::match_request_to_handler(request req) {
-  if (auto handler = m_router.match(req); handler) return send_response(req, (handler)(req));
+  if (auto handler = m_router.match(req); handler) return send_response(std::move(req), (handler)(req));
   std::cout << "No match\n";
 }
 
-void app::impl::send_response(request r, response res) {
+void app::impl::send_response(request req, response res) {
   uv_buf_t *write_buf = new uv_buf_t;
   *write_buf = uv_buf_init((char *)res.to_string().c_str(), res.to_string().length());
   uv_write_t *write_req = new uv_write_t;
-  uv_write(write_req, (uv_stream_t *)r.get_remote(), write_buf, 1, app::impl::on_write);
+  write_req->data = (void *)req.get_raw().data();
+  uv_write(write_req, (uv_stream_t *)req.get_remote(), write_buf, 1, app::impl::on_write_response);
 }
 
 void app::impl::add_route(method method, const std::string path, path_handler handler) {
   m_router.add(method, path, handler);
 }
 
-void app::impl::on_write(uv_write_t *req, int status) {
+void app::impl::on_write_response(uv_write_t *req, int status) {
+  delete[] (char *)req->data;
   delete req->bufs;
   delete req;
   uv_close((uv_handle_t *)req->handle, app::impl::on_close_conn);

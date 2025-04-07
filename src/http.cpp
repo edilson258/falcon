@@ -20,31 +20,36 @@ int http_parser::llhttp_on_url(llhttp_t *p, const char *at, size_t len) {
 
 int http_parser::llhttp_on_method(llhttp_t *p, const char *at, size_t len) {
   request *r = (request *)p->data;
-  if (strncmp("GET", at, len) == 0) {
+  if (strncmp("GET", at, len) == 0)
     r->m_method = method::GET;
-  } else if (strncmp("POST", at, len) == 0) {
+  else if (strncmp("POST", at, len) == 0)
     r->m_method = method::POST;
-  } else if (strncmp("PUT", at, len) == 0) {
+  else if (strncmp("PUT", at, len) == 0)
     r->m_method = method::PUT;
-  } else if (strncmp("DELETE", at, len) == 0) {
+  else if (strncmp("DELETE", at, len) == 0)
     r->m_method = method::DELETE;
-  } else {
+  else
     return HPE_INVALID_METHOD;
-  }
   return HPE_OK;
 }
 
 int http_parser::llhttp_on_body(llhttp_t *p, const char *at, size_t len) {
-  request *r = (request *)p->data;
-  r->m_raw_body = std::string_view(at, len);
+  request *req = (request *)p->data;
+  req->m_raw_body = std::string_view(at, len);
   return HPE_OK;
 }
 
+std::string_view m_last_header_field;
+
 int http_parser::llhttp_on_header_field(llhttp_t *p, const char *at, size_t len) {
+  request *req = (request *)p->data;
+  m_last_header_field = std::string_view(at, len);
   return HPE_OK;
 }
 
 int http_parser::llhttp_on_header_value(llhttp_t *p, const char *at, size_t len) {
+  request *req = (request *)p->data;
+  req->m_headers[m_last_header_field] = std::string_view(at, len);
   return HPE_OK;
 }
 

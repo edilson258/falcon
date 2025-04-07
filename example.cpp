@@ -26,6 +26,7 @@ fc::response create(fc::request req) {
 }
 
 fc::response find_many(fc::request req) {
+  std::cout << req.get_header("Cookie").value() << std::endl;
   return fc::response::ok();
 }
 

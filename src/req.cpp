@@ -10,10 +10,15 @@
 namespace fc {
 
 request request_factory(void *remote, std::string_view sv) { return request(remote, sv); }
-request::~request() { delete[] m_raw.data(); }
 
-std::optional<const std::string> request::get_param(const std::string &key) const {
+std::optional<std::string> request::get_param(const std::string &key) const {
   if (auto it = m_params.find(key); it != m_params.end()) return it->second;
+  return std::nullopt;
+}
+
+std::optional<std::string> request::get_header(const std::string &key) const {
+  // make key comp. case insesitive
+  if (auto it = m_headers.find(key); it != m_headers.end()) return std::string(it->second);
   return std::nullopt;
 }
 

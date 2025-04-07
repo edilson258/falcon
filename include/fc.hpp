@@ -31,14 +31,14 @@ enum class status {
 struct request {
 public:
   explicit request() = delete;
-  ~request();
 
+  bool bind_to_json(simdjson::dom::element *);
   method get_method() const { return m_method; }
+  const void *get_remote() const { return m_remote; }
   const std::string_view &get_raw() const { return m_raw; };
   const std::string_view &get_path() const { return m_path; }
-  const void *get_remote() const { return m_remote; }
-  std::optional<const std::string> get_param(const std::string &key) const;
-  bool bind_to_json(simdjson::dom::element *);
+  std::optional<std::string> get_param(const std::string &key) const;
+  std::optional<std::string> get_header(const std::string &key) const;
 
 private:
   void *m_remote;
@@ -48,6 +48,7 @@ private:
   std::string_view m_path;
   std::string_view m_raw_body;
   std::unordered_map<std::string, std::string> m_params;
+  std::unordered_map<std::string_view, std::string_view> m_headers;
 
   request(void *remote, std::string_view raw) : m_remote(remote), m_raw(raw) {};
 
