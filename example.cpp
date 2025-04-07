@@ -1,5 +1,6 @@
 #include <cassert>
 #include <cstdlib>
+#include <format>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -26,12 +27,22 @@ fc::response create(fc::request req) {
 }
 
 fc::response find_many(fc::request req) {
-  std::cout << req.get_cookie("name").value() << std::endl;
-  return fc::response::ok();
+  std::string json = R"({ "users": [)";
+  for (auto i = 0; i < users.size(); ++i) {
+    json += std::format(R"({{ "name": "{}", "password": "{}" }})", users.at(i).email, users.at(i).password);
+    if (i + 1 < users.size()) json.push_back(',');
+  }
+  json += "]}";
+  return fc::response::json(json);
 }
 
 fc::response find_by_id(fc::request req) {
-  return fc::response::json(R"({"name": "Edilson"})");
+  auto id = (std::stoi(req.get_param("id").value())) - 1;
+  if (id >= users.size()) {
+    return fc::response::ok(fc::status::NOT_FOUND);
+  }
+  auto json = std::format(R"({{ "name": "{}", "password": "{}" }})", users.at(id).email, users.at(id).password);
+  return fc::response::json(json);
 }
 
 int main(int argc, char *argv[]) {
