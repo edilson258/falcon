@@ -37,8 +37,9 @@ public:
   const void *get_remote() const { return m_remote; }
   const std::string_view &get_raw() const { return m_raw; };
   const std::string_view &get_path() const { return m_path; }
-  std::optional<std::string> get_param(const std::string &key) const;
-  std::optional<std::string> get_header(const std::string &key) const;
+  std::optional<std::string> get_param(const std::string &) const;
+  std::optional<std::string_view> get_header(const std::string &) const;
+  std::optional<std::string_view> get_cookie(const std::string &);
 
 private:
   void *m_remote;
@@ -51,6 +52,20 @@ private:
   std::unordered_map<std::string_view, std::string_view> m_headers;
 
   request(void *remote, std::string_view raw) : m_remote(remote), m_raw(raw) {};
+
+  struct cookies {
+    struct cookie {
+      std::string_view name;
+      std::string_view value;
+    };
+
+    bool parsed = false;
+    std::vector<cookie> m_cookies;
+    void parse(std::string_view header);
+    std::optional<std::string_view> get(std::string_view key) const;
+  };
+
+  cookies m_cookies;
 
   friend struct router;
   friend struct http_parser;
