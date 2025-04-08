@@ -1,12 +1,11 @@
 #include <algorithm>
 #include <cstddef>
-#include <exception>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
 
-#include "external/simdjson/simdjson.h"
+#include "external/nlohmann/json.hpp"
 #include "include/fc.hpp"
 #include "src/req.hpp"
 
@@ -44,15 +43,8 @@ std::optional<std::string_view> request::get_cookie(const std::string &name) {
   return m_cookies->get(name);
 }
 
-bool request::bind_to_json(simdjson::dom::element *d) {
-  static simdjson::dom::parser parser;
-  try {
-    *d = parser.parse(m_raw_body);
-    return true;
-  } catch (std::exception &e) {
-    std::cerr << "[FALCON ERROR]: Failed to bind request body to json, " << e.what() << std::endl;
-    return false;
-  }
+nlohmann::json request::json() {
+  return nlohmann::json::parse(m_raw_body);
 }
 
 inline std::string_view trim(std::string_view str) {

@@ -13,8 +13,9 @@ const response response::ok(status stats) {
   return response(std::move(std::format(templates::OK_RESPONSE, static_cast<int>(stats), stats_str, strlen(stats_str), stats_str)));
 }
 
-const response response::json(std::string body, status stats) {
-  return response(std::move(std::format(templates::HTTP_RESPONSE_FORMAT, static_cast<int>(stats), status_to_string(stats), "application/json", body.length(), body)));
+const response response::json(nlohmann::json j, status stats) {
+  auto xs = j.dump();
+  return response(std::move(std::format(templates::HTTP_RESPONSE_FORMAT, static_cast<int>(stats), status_to_string(stats), "application/json", xs.length(), std::move(xs))));
 }
 
 void response::set_status(status status) {

@@ -24,7 +24,7 @@ public:
   router m_router;
   http_parser m_http_parser;
 
-  // The 'm_Loop->data' field always holds a pointer to an object of this struct
+  // The 'm_loop->data' field always holds a pointer to an object of this struct
   uv_loop_t *m_loop;
   uv_tcp_t m_host_sock;
   struct sockaddr_in m_addr;

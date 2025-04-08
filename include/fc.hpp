@@ -7,11 +7,7 @@
 #include <sys/stat.h>
 #include <vector>
 
-#include "external/simdjson/simdjson.h"
-
-#if (!FC_MAX_PARAMS)
-#define FC_MAX_PARAMS 50
-#endif
+#include "external/nlohmann/json.hpp"
 
 namespace fc {
 
@@ -39,7 +35,7 @@ public:
   explicit request() = delete;
   ~request();
 
-  bool bind_to_json(simdjson::dom::element *);
+  nlohmann::json json();
   method get_method() const { return m_method; }
   const void *get_remote() const { return m_uv_remote; }
   const std::string_view &get_raw() const { return m_raw; };
@@ -70,11 +66,10 @@ private:
 struct response {
 public:
   static const response ok(status stats = status::OK);
-  static const response json(std::string body = "{}", status status = status::OK);
+  static const response json(nlohmann::json, status status = status::OK);
 
   void set_status(status);
   void set_content_type(const std::string);
-
   const std::string &to_string() const { return m_raw; }
 
 private:
