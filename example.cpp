@@ -5,65 +5,64 @@
 #include <string>
 #include <vector>
 
+#include "external/nlohmann/json.hpp"
 #include "include/fc.hpp"
 
-struct User {
+struct user_schema {
 public:
-  int id;
-  std::string email;
-  std::string password;
+  int m_id;
+  std::string m_email;
+  std::string m_password;
+  bool m_is_deleted = false;
 
-  bool is_deleted = false;
-
-  User(std::string email, std::string password) : email(email), password(password) {};
+  user_schema(std::string email, std::string password) : m_email(email), m_password(password) {};
 };
 
-std::vector<User> users;
+std::vector<user_schema> users;
 
 fc::response create(fc::request req) {
   nlohmann::json body = req.json();
-  User user(body["email"], body["password"]);
+  user_schema user(body["email"], body["password"]);
   users.push_back(user);
   return fc::response::ok(fc::status::CREATED);
 }
 
 fc::response delet(fc::request req) {
   auto id = (std::stoi(req.get_param("id").value())) - 1;
-  if (id >= users.size() || users.at(id).is_deleted) {
+  if (id >= users.size() || users.at(id).m_is_deleted) {
     return fc::response::ok(fc::status::NOT_FOUND);
   }
-  users.at(id).is_deleted = true;
+  users.at(id).m_is_deleted = true;
   return fc::response::ok(fc::status::NO_CONTENT);
 }
 
 fc::response find_many(fc::request req) {
   nlohmann::json json = nlohmann::json::object();
-  for (User &u : users) {
-    if (u.is_deleted) continue;
-    json["users"].push_back({{"email", u.email}, {"password", u.password}});
+  for (user_schema &u : users) {
+    if (u.m_is_deleted) continue;
+    json["users"].push_back({{"email", u.m_email}, {"password", u.m_password}});
   }
   return fc::response::json(json);
 }
 
 fc::response find_by_id(fc::request req) {
   auto id = (std::stoi(req.get_param("id").value())) - 1;
-  if (id >= users.size() || users.at(id).is_deleted) {
+  if (id >= users.size() || users.at(id).m_is_deleted) {
     return fc::response::ok(fc::status::NOT_FOUND);
   }
-  auto json = std::format(R"({{ "name": "{}", "password": "{}" }})", users.at(id).email, users.at(id).password);
-  return fc::response::json(json);
+  return fc::response::json({{"email", users.at(id).m_email}, {"password", users.at(id).m_password}});
 }
 
 int main(int argc, char *argv[]) {
+  users.push_back(user_schema("alicey@email.com", "alice123"));
+  users.push_back(user_schema("milkey@test.com", "strongpass"));
+
   fc::app app;
-
-  users.push_back(User("alicey@email.com", "alice123"));
-  users.push_back(User("milkey@test.com", "strongpass"));
-
-  app.get("/users/", find_many);
-  app.get("/users/:id", find_by_id);
-  app.post("/users", create);
-  app.delet("/users/:id", delet);
-
-  app.listen(":8000", []() { std::cout << "Http server running...\n"; });
+  fc::router router("/users");
+  router.post("", create);
+  router.get("", find_many);
+  router.get("/:id", find_by_id);
+  router.delet("/:id", delet);
+  app.use(router);
+  app.listen(":8000", [](auto &addr) { std::cout << "Listening at " << addr << std::endl; });
 }

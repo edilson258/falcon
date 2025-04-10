@@ -2,11 +2,31 @@
 #include <stdexcept>
 
 #include "include/fc.hpp"
-#include "src/router.hpp"
+#include "router.hpp"
 
 namespace fc {
 
-std::string router::normalize_path(const std::string_view &input) {
+void router::get(const std::string path, path_handler handler) {
+  m_routes.push_back(route(method::GET, path, handler));
+}
+
+void router::post(const std::string path, path_handler handler) {
+  m_routes.push_back(route(method::POST, path, handler));
+}
+
+void router::put(const std::string path, path_handler handler) {
+  m_routes.push_back(route(method::PUT, path, handler));
+}
+
+void router::delet(const std::string path, path_handler handler) {
+  m_routes.push_back(route(method::DELETE, path, handler));
+}
+
+void router::patch(const std::string path, path_handler handler) {
+  m_routes.push_back(route(method::PATCH, path, handler));
+}
+
+std::string root_router::normalize_path(const std::string_view &input) {
   bool prevSlash = false;
   std::string output;
   output.reserve(input.length());
@@ -20,7 +40,7 @@ std::string router::normalize_path(const std::string_view &input) {
   return output;
 }
 
-std::vector<std::string> router::split_path(const std::string_view &path) {
+std::vector<std::string> root_router::split_path(const std::string_view &path) {
   std::vector<std::string> frags;
   auto normalPath = normalize_path(path);
   char *frag = std::strtok((char *)normalPath.c_str(), "/");
@@ -31,7 +51,7 @@ std::vector<std::string> router::split_path(const std::string_view &path) {
   return frags;
 }
 
-void router::add(method method, const std::string path, path_handler handler) {
+void root_router::add(method method, const std::string path, path_handler handler) {
   auto pathFragments = split_path(path);
   frag *current = &m_root;
 
@@ -74,7 +94,7 @@ void router::add(method method, const std::string path, path_handler handler) {
   current->m_handlers[static_cast<int>(method)] = handler;
 }
 
-path_handler router::match(request &req) const {
+path_handler root_router::match(request &req) const {
   auto fragments = split_path(req.m_path);
   const frag *current = &m_root;
   for (auto &frg : fragments) {

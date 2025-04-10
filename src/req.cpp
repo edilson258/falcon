@@ -11,7 +11,8 @@
 
 namespace fc {
 
-request request_factory(void *remote, std::string_view sv) { return request(remote, sv); }
+request request_factory(void *remote, std::string_view raw) { return request(remote, raw); }
+
 request::~request() {
   if (m_cookies) delete m_cookies;
 }
@@ -35,8 +36,6 @@ std::optional<std::string_view> request::get_cookie(const std::string &name) {
   }
   if (!m_cookies) {
     m_cookies = new cookies();
-  }
-  if (!m_cookies->parsed) {
     m_cookies->parsed = true;
     m_cookies->parse(cookies_header.value());
   }
@@ -79,8 +78,8 @@ void request::cookies::parse(std::string_view header) {
 
 std::optional<std::string_view> request::cookies::get(std::string_view key) const {
   for (const auto &c : m_cookies) {
-    if (c.name == key)
-      return c.value;
+    if (c.first == key)
+      return c.second;
   }
   return std::nullopt;
 }

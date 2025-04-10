@@ -58,7 +58,7 @@ private:
 
   request(void *remote, std::string_view raw) : m_uv_remote(remote), m_raw(raw) {};
 
-  friend struct router;
+  friend struct root_router;
   friend struct http_parser;
   friend request request_factory(void *remote, std::string_view raw);
 };
@@ -82,6 +82,32 @@ private:
 
 using path_handler = std::function<response(request)>;
 
+struct router {
+private:
+  struct route {
+  public:
+    method m_method;
+    std::string m_path;
+    path_handler m_handler;
+
+    route(method m, std::string path, path_handler handler) : m_method(m), m_path(path), m_handler(handler) {};
+  };
+
+  std::string m_base;
+  std::vector<route> m_routes;
+
+  friend struct app;
+
+public:
+  void get(const std::string, path_handler);
+  void post(const std::string, path_handler);
+  void put(const std::string, path_handler);
+  void delet(const std::string, path_handler);
+  void patch(const std::string, path_handler);
+
+  router(std::string base = "") : m_base(base), m_routes() {};
+};
+
 struct app {
 public:
   app();
@@ -93,13 +119,16 @@ public:
   void delet(const std::string, path_handler);
   void patch(const std::string, path_handler);
 
-  int listen(const std::string, std::function<void()>);
+  void use(const router &);
+
+  int listen(const std::string, std::function<void(const std::string &addr)>);
 
 private:
   struct impl;
   impl *m_pimpl;
+  friend struct impl;
 
   friend void parse_http_request(request);
-  friend struct impl;
 };
+
 } // namespace fc

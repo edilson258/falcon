@@ -27,11 +27,11 @@ public:
   };
 };
 
-struct router {
+struct root_router {
 public:
   frag m_root;
 
-  router() = default;
+  root_router() = default;
 
   void add(method method, const std::string, path_handler);
   path_handler match(request &) const;

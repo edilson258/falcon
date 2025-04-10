@@ -21,7 +21,7 @@ namespace fc {
 
 struct app::impl {
 public:
-  router m_router;
+  root_router m_router;
   http_parser m_http_parser;
 
   // The 'm_loop->data' field always holds a pointer to an object of this struct
@@ -71,7 +71,13 @@ void app::patch(const std::string path, path_handler handler) {
   m_pimpl->add_route(method::PATCH, path, handler);
 }
 
-int app::listen(const std::string addr, std::function<void()> callBack) {
+void app::use(const router &router) {
+  for (auto &r : router.m_routes) {
+    m_pimpl->add_route(r.m_method, router.m_base + r.m_path, r.m_handler);
+  }
+}
+
+int app::listen(const std::string addr, std::function<void(const std::string &)> call_back) {
   auto [host, port] = split_address(addr);
   uv_ip4_addr(host.c_str(), std::stoi(port), &m_pimpl->m_addr);
   int result = uv_tcp_bind(&m_pimpl->m_host_sock, (const struct sockaddr *)&m_pimpl->m_addr, 0);
@@ -84,7 +90,7 @@ int app::listen(const std::string addr, std::function<void()> callBack) {
     std::cerr << "[FALCON ERROR]: Failed to listen at " << addr << ", " << uv_strerror(result) << std::endl;
     return -1;
   }
-  callBack();
+  call_back(host + ":" + port);
   return uv_run(m_pimpl->m_loop, UV_RUN_DEFAULT);
 }
 
