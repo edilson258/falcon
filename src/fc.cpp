@@ -38,7 +38,7 @@ public:
   void match_request_to_handler(request);
   void send_response(request, response);
 
-  void add_route(method method, const std::string path, path_handler handler);
+  void add_route(method, const std::string, path_handler, middleware_handler mh = nullptr);
 
   // uv callbacks
   static void on_connection(uv_stream_t *server, int status);
@@ -73,7 +73,7 @@ void app::patch(const std::string path, path_handler handler) {
 
 void app::use(const router &router) {
   for (auto &r : router.m_routes) {
-    m_pimpl->add_route(r.m_method, router.m_base + r.m_path, r.m_handler);
+    m_pimpl->add_route(r.m_method, router.m_base + r.m_path, r.m_handler, router.m_mh);
   }
 }
 
@@ -149,8 +149,8 @@ void app::impl::send_response(request req, response res) {
   uv_write(write_req, (uv_stream_t *)req.get_remote(), write_buf, 1, app::impl::on_write_response);
 }
 
-void app::impl::add_route(method method, const std::string path, path_handler handler) {
-  m_router.add(method, path, handler);
+void app::impl::add_route(method method, const std::string path, path_handler handler, middleware_handler mh) {
+  m_router.add(method, path, handler, mh);
 }
 
 void app::impl::on_write_response(uv_write_t *req, int status) {

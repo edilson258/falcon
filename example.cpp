@@ -1,6 +1,5 @@
 #include <cassert>
 #include <cstdlib>
-#include <format>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -54,15 +53,21 @@ fc::response find_by_id(fc::request req) {
 }
 
 int main(int argc, char *argv[]) {
+  // mocked users
   users.push_back(user_schema("alicey@email.com", "alice123"));
   users.push_back(user_schema("milkey@test.com", "strongpass"));
 
   fc::app app;
   fc::router router("/users");
+
+  router.use([](fc::request req) { std::cout << "Request on users/" << std::endl; return req; });
+
   router.post("", create);
   router.get("", find_many);
   router.get("/:id", find_by_id);
   router.delet("/:id", delet);
+
   app.use(router);
+
   app.listen(":8000", [](auto &addr) { std::cout << "Listening at " << addr << std::endl; });
 }

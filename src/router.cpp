@@ -51,7 +51,7 @@ std::vector<std::string> root_router::split_path(const std::string_view &path) {
   return frags;
 }
 
-void root_router::add(method method, const std::string path, path_handler handler) {
+void root_router::add(method method, const std::string path, path_handler handler, middleware_handler mh) {
   auto pathFragments = split_path(path);
   frag *current = &m_root;
 
@@ -91,6 +91,7 @@ void root_router::add(method method, const std::string path, path_handler handle
   if (current->m_handlers[static_cast<int>(method)] != nullptr) {
     throw std::runtime_error("Duplicate route for method " + std::to_string(static_cast<int>(method)) + " at path: " + path);
   }
+  current->m_middleware = mh;
   current->m_handlers[static_cast<int>(method)] = handler;
 }
 
@@ -118,6 +119,9 @@ path_handler root_router::match(request &req) const {
     if (!found) {
       return nullptr;
     }
+  }
+  if (current->m_middleware) {
+    current->m_middleware(req);
   }
   return current->m_handlers.at((int)req.m_method);
 }

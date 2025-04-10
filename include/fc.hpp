@@ -81,6 +81,7 @@ private:
 };
 
 using path_handler = std::function<response(request)>;
+using middleware_handler = std::function<request(request)>;
 
 struct router {
 private:
@@ -95,6 +96,7 @@ private:
 
   std::string m_base;
   std::vector<route> m_routes;
+  middleware_handler m_mh = nullptr;
 
   friend struct app;
 
@@ -104,6 +106,8 @@ public:
   void put(const std::string, path_handler);
   void delet(const std::string, path_handler);
   void patch(const std::string, path_handler);
+
+  void use(middleware_handler mh) { m_mh = mh; };
 
   router(std::string base = "") : m_base(base), m_routes() {};
 };
