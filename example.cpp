@@ -20,7 +20,7 @@ public:
 std::vector<user_schema> users;
 
 fc::response create(fc::request req) {
-  nlohmann::json body = req.json();
+  auto body = req.json();
   user_schema user(body["email"], body["password"]);
   users.push_back(user);
   return fc::response::ok(fc::status::CREATED);
@@ -60,6 +60,7 @@ int main(int argc, char *argv[]) {
   fc::app app;
   fc::router router("/users");
 
+  // middleware
   router.use([](fc::request req) { std::cout << "Request on users/" << std::endl; return req; });
 
   router.post("", create);

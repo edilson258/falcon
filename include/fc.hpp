@@ -37,7 +37,7 @@ public:
 
   nlohmann::json json();
   method get_method() const { return m_method; }
-  const void *get_remote() const { return m_uv_remote; }
+  const void *get_remote() const { return m_uvremote; }
   const std::string_view &get_raw() const { return m_raw; };
   const std::string_view &get_path() const { return m_path; }
   std::optional<std::string> get_param(const std::string &) const;
@@ -45,7 +45,7 @@ public:
   std::optional<std::string_view> get_cookie(const std::string &);
 
 private:
-  const void *m_uv_remote;
+  const void *m_uvremote;
 
   method m_method;
   std::string_view m_raw;
@@ -56,7 +56,7 @@ private:
   struct cookies;
   cookies *m_cookies; // NOTE: clean on destructor
 
-  request(void *remote, std::string_view raw) : m_uv_remote(remote), m_raw(raw) {};
+  request(void *remote, std::string_view raw) : m_uvremote(remote), m_raw(raw) {};
 
   friend struct root_router;
   friend struct http_parser;
