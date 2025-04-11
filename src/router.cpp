@@ -68,7 +68,7 @@ void root_router::add(method method, const std::string path, path_handler handle
     frag *child = current->m_child;
     while (child) {
       if ((type == frag_type::STATIC && child->m_label == frg) || (type != frag_type::STATIC && child->m_type == type)) {
-        if (type == frag_type::DYNAMIC && child->m_label != frg && child->m_handlers.at((int)method)) {
+        if (type == frag_type::DYNAMIC && child->m_label != frg && (child->m_handlers && child->m_handlers->at((int)method))) {
           throw std::runtime_error("Conflicting dynamic segment names: " + child->m_label + " vs " + frg);
         }
         found = true;
@@ -88,11 +88,15 @@ void root_router::add(method method, const std::string path, path_handler handle
     }
     current = child;
   }
-  if (current->m_handlers[static_cast<int>(method)] != nullptr) {
+  // at this point we know that the current fragment is a leaf node
+  if (!current->m_handlers) {
+    current->m_handlers = new frag_handlers_t();
+  }
+  if (current->m_handlers->at(static_cast<int>(method))) {
     throw std::runtime_error("Duplicate route for method " + std::to_string(static_cast<int>(method)) + " at path: " + path);
   }
   current->m_middleware = mh;
-  current->m_handlers[static_cast<int>(method)] = handler;
+  current->m_handlers->at(static_cast<int>(method)) = handler;
 }
 
 path_handler root_router::match(request &req) const {
@@ -108,7 +112,7 @@ path_handler root_router::match(request &req) const {
         found = true;
         req.m_params.push_back({child->m_label, frg});
         break;
-      case frag_type::WILDCARD: return child->m_handlers[static_cast<int>(req.m_method)];
+      case frag_type::WILDCARD: return child->m_handlers ? child->m_handlers->at(static_cast<int>(req.m_method)) : nullptr;
       }
       if (found) {
         current = child;
@@ -123,7 +127,7 @@ path_handler root_router::match(request &req) const {
   if (current->m_middleware) {
     current->m_middleware(req);
   }
-  return current->m_handlers.at((int)req.m_method);
+  return current->m_handlers ? current->m_handlers->at((int)req.m_method) : nullptr;
 }
 
 } // namespace fc

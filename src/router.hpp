@@ -12,20 +12,20 @@ enum class frag_type {
   WILDCARD = 3,
 };
 
+using frag_handlers_t = std::array<path_handler, static_cast<int>(method::COUNT)>;
+
 struct frag {
 public:
   frag_type m_type;
   std::string m_label;
   middleware_handler m_middleware;
-  std::array<path_handler, static_cast<int>(method::COUNT)> m_handlers;
+  frag_handlers_t *m_handlers;
 
   frag *m_next;
   frag *m_child;
 
   frag() = default;
-  frag(frag_type type, std::string label, middleware_handler mh = nullptr) : m_type(type), m_label(label), m_middleware(mh), m_next(nullptr), m_child(nullptr) {
-    std::fill(m_handlers.begin(), m_handlers.end(), nullptr);
-  };
+  frag(frag_type type, std::string label, middleware_handler mh = nullptr) : m_type(type), m_label(label), m_middleware(mh), m_handlers(nullptr), m_next(nullptr), m_child(nullptr) {};
 };
 
 struct root_router {
