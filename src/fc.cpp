@@ -1,7 +1,14 @@
+#include <cstdio>
+#include <cstring>
+#include <fcntl.h>
+#include <filesystem>
 #include <iostream>
+#include <limits>
 #include <string>
 #include <string_view>
+#include <sys/param.h>
 #include <uv.h>
+#include <uv/unix.h>
 #include <vector>
 
 #include "external/llhttp/llhttp.h"
@@ -134,12 +141,78 @@ void app::impl::parse_http_request(request req) {
   match_request_to_handler(std::move(req));
 }
 
+// #include <iostream>
+// #include <string>
+// #include <vector>
+// #include <sstream>
+// #include <filesystem>
+// #include <stdexcept>
+
+// namespace fs = std::filesystem;
+
+// std::string normalize_path(const std::string& base_dir, const std::string& input_path) {
+//     fs::path base(base_dir);
+//     fs::path requested_path = fs::path(input_path).lexically_normal();
+
+//     // Resolve the absolute path by combining base_dir and requested_path
+//     fs::path full_path = fs::canonical(base / requested_path);
+
+//     // Check if the file path is still inside the base directory
+//     if (full_path.string().find(base.string()) != 0) {
+//         throw std::invalid_argument("Access outside of allowed directory is not permitted.");
+//     }
+
+//     return full_path.string();  // Return the normalized, absolute path
+// }
+
+// int main() {
+//     try {
+//         std::string base_dir = "public";  // The allowed directory for static files
+//         std::string requested_path = "../style.css";  // Example input path (malicious)
+
+//         std::string safe_path = normalize_path(base_dir, requested_path);
+//         std::cout << "Safe, normalized path: " << safe_path << std::endl;
+
+//     } catch (const std::invalid_argument& e) {
+//         std::cerr << "Error: " << e.what() << std::endl;
+//     }
+
+//     return 0;
+// }
+
+namespace fs = std::filesystem;
+
+void on_open_static_file(uv_fs_t *req) {
+  if (req->file < 0) {
+    // send 404
+  }
+  uv_fs_t *fs_req = new uv_fs_t;
+  fs_req->data = req->data;
+  printf("Stat %d %zu\n", req->file, req->statbuf.st_size);
+}
+
+void try_serve_static_file(request req) {
+  fs::path base = fs::path(FC_PUBLIC_DIR);
+  fs::path full_path = base.concat(req.get_path()).lexically_normal().make_preferred();
+  if (full_path.string().find(base.string()) != 0) {
+    // probably is a path traversal attack
+    // send 404
+  }
+
+  const char *path = strndup(full_path.c_str(), MAXPATHLEN);
+  printf("Path: %s\n", path);
+  uv_fs_t *fs_req = new uv_fs_t;
+  uv_tcp_t *remote = (uv_tcp_t *)req.get_remote();
+  fs_req->data = remote;
+  uv_fs_open(remote->loop, fs_req, path, UV_FS_O_RDONLY, S_IRUSR, on_open_static_file);
+}
+
 void app::impl::match_request_to_handler(request req) {
   if (m_router.match(req)) {
     auto res = req.next();
     return send_response(std::move(req), std::move(res));
   }
-  std::cout << "No match\n";
+  try_serve_static_file(req);
 }
 
 void app::impl::send_response(request req, response res) {

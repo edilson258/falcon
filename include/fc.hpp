@@ -1,6 +1,5 @@
 #pragma once
 
-#include <filesystem>
 #include <functional>
 #include <optional>
 #include <string>
@@ -11,6 +10,14 @@
 #include "external/nlohmann/json.hpp"
 
 namespace fc {
+
+#if !defined(FC_VIEWS_DIR)
+#define FC_VIEWS_DIR = "views/"
+#endif
+
+#if !defined(FC_PUBLIC_DIR)
+#define FC_PUBLIC_DIR "public/"
+#endif
 
 enum class method {
   GET = 0,
@@ -111,7 +118,7 @@ struct response {
 public:
   static const response ok(status stats = status::OK);
   static const response json(nlohmann::json, status status = status::OK);
-  static const response send(const std::filesystem::path path);
+  static const response render(const std::string &filename, status status = status::OK);
 
   void set_status(status);
   status get_status() const { return m_status; }

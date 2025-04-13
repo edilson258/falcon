@@ -72,6 +72,7 @@ int main(int argc, char *argv[]) {
   router.get("/:id", find_by_id);
   router.delet("/:id", delet);
 
+  app.get("/", [](fc::request req) { return fc::response::render("index"); });
   app.use(router);
 
   app.listen(":8000", [](auto &addr) { std::cout << "Listening at " << addr << std::endl; });
