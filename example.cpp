@@ -52,6 +52,9 @@ fc::response find_by_id(fc::request req) {
   return fc::response::json({{"email", users.at(id).m_email}, {"password", users.at(id).m_password}});
 }
 
+fc::response auth_middleware(fc::request);
+fc::response logger_middleware(fc::request);
+
 int main(int argc, char *argv[]) {
   // mocked users
   users.push_back(user_schema("alicey@email.com", "alice123"));
@@ -60,8 +63,9 @@ int main(int argc, char *argv[]) {
   fc::app app;
   fc::router router("/users");
 
-  // middleware
-  router.use([](fc::request req) { std::cout << "Request on users/" << std::endl; return req; });
+  // middlewares
+  router.use(auth_middleware);
+  router.use(logger_middleware);
 
   router.post("", create);
   router.get("", find_many);
@@ -71,4 +75,21 @@ int main(int argc, char *argv[]) {
   app.use(router);
 
   app.listen(":8000", [](auto &addr) { std::cout << "Listening at " << addr << std::endl; });
+}
+
+fc::response logger_middleware(fc::request req) {
+  return req.next();
+}
+
+fc::response auth_middleware(fc::request req) {
+  static std::string token = "uGhTVjLwDb0R/s4xR3mwX/AdymqNbV9htkcRiulIw3E=";
+  if (auto authToken = req.get_header("Authorization"); authToken.has_value()) {
+    if (!authToken.value().starts_with("Bearer ")) goto unauthorized;
+    if (authToken.value().substr(7) != token) goto forbidden;
+    return req.next();
+  }
+unauthorized:
+  return fc::response::ok(fc::status::UNAUTHORIZED);
+forbidden:
+  return fc::response::ok(fc::status::FORBIDDEN);
 }

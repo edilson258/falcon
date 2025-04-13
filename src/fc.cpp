@@ -1,10 +1,8 @@
-#include <cstring>
 #include <iostream>
 #include <string>
 #include <string_view>
-#include <sys/stat.h>
 #include <uv.h>
-#include <uv/unix.h>
+#include <vector>
 
 #include "external/llhttp/llhttp.h"
 
@@ -38,7 +36,7 @@ public:
   void match_request_to_handler(request);
   void send_response(request, response);
 
-  void add_route(method, const std::string, path_handler, middleware_handler mh = nullptr);
+  void add_route(method, const std::string, path_handler, const std::vector<path_handler> &);
 
   // uv callbacks
   static void on_connection(uv_stream_t *server, int status);
@@ -52,28 +50,28 @@ app::app() : m_pimpl(new app::impl()) {}
 app::~app() { delete m_pimpl; }
 
 void app::get(const std::string path, path_handler handler) {
-  m_pimpl->add_route(method::GET, path, handler);
+  m_pimpl->add_route(method::GET, path, handler, {});
 }
 
 void app::post(const std::string path, path_handler handler) {
-  m_pimpl->add_route(method::POST, path, handler);
+  m_pimpl->add_route(method::POST, path, handler, {});
 }
 
 void app::put(const std::string path, path_handler handler) {
-  m_pimpl->add_route(method::PUT, path, handler);
+  m_pimpl->add_route(method::PUT, path, handler, {});
 }
 
 void app::delet(const std::string path, path_handler handler) {
-  m_pimpl->add_route(method::DELETE, path, handler);
+  m_pimpl->add_route(method::DELETE, path, handler, {});
 }
 
 void app::patch(const std::string path, path_handler handler) {
-  m_pimpl->add_route(method::PATCH, path, handler);
+  m_pimpl->add_route(method::PATCH, path, handler, {});
 }
 
 void app::use(const router &router) {
   for (auto &r : router.m_routes) {
-    m_pimpl->add_route(r.m_method, router.m_base + r.m_path, r.m_handler, router.m_mh);
+    m_pimpl->add_route(r.m_method, router.m_base + r.m_path, r.m_handler, router.m_midwares);
   }
 }
 
@@ -137,7 +135,10 @@ void app::impl::parse_http_request(request req) {
 }
 
 void app::impl::match_request_to_handler(request req) {
-  if (auto handler = m_router.match(req); handler) return send_response(std::move(req), (handler)(req));
+  if (m_router.match(req)) {
+    auto res = req.next();
+    return send_response(std::move(req), std::move(res));
+  }
   std::cout << "No match\n";
 }
 
@@ -149,8 +150,8 @@ void app::impl::send_response(request req, response res) {
   uv_write(write_req, (uv_stream_t *)req.get_remote(), write_buf, 1, app::impl::on_write_response);
 }
 
-void app::impl::add_route(method method, const std::string path, path_handler handler, middleware_handler mh) {
-  m_router.add(method, path, handler, mh);
+void app::impl::add_route(method method, const std::string path, path_handler handler, const std::vector<path_handler> &midwares) {
+  m_router.add(method, path, handler, midwares);
 }
 
 void app::impl::on_write_response(uv_write_t *req, int status) {

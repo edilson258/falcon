@@ -23,7 +23,6 @@ enum class method {
   COUNT,
 };
 
-// put all http status codes
 enum class status {
   // 1xx: Informational
   //
@@ -103,6 +102,30 @@ enum class status {
   NETWORK_AUTHENTICATION_REQUIRED = 511
 };
 
+struct request;
+struct response;
+
+using path_handler = std::function<response(request)>;
+
+struct response {
+public:
+  static const response ok(status stats = status::OK);
+  static const response json(nlohmann::json, status status = status::OK);
+  static const response send(const std::filesystem::path path);
+
+  void set_status(status);
+  status get_status() const { return m_status; }
+  void set_content_type(const std::string);
+  const std::string &to_string() const { return m_raw; }
+
+private:
+  std::string m_raw;
+  status m_status;
+  std::string m_content_type;
+
+  response(std::string raw) : m_raw(std::move(raw)) {}
+};
+
 struct request {
 public:
   explicit request() = delete;
@@ -116,6 +139,7 @@ public:
   std::optional<std::string> get_param(const std::string &) const;
   std::optional<std::string_view> get_header(const std::string &) const;
   std::optional<std::string_view> get_cookie(const std::string &);
+  response next();
 
 private:
   const void *m_uvremote;
@@ -127,7 +151,10 @@ private:
   std::vector<std::pair<std::string_view, std::string>> m_params;
   std::vector<std::pair<std::string_view, std::string_view>> m_headers;
   struct cookies;
-  cookies *m_cookies; // NOTE: clean on destructor
+  cookies *m_cookies;
+
+  // middlewares + main handler
+  std::vector<path_handler> m_handlers;
 
   request(void *remote, std::string_view raw) : m_uvremote(remote), m_raw(raw) {};
 
@@ -136,28 +163,18 @@ private:
   friend request request_factory(void *remote, std::string_view raw);
 };
 
-struct response {
-public:
-  static const response ok(status stats = status::OK);
-  static const response json(nlohmann::json, status status = status::OK);
-  static const response send(const std::filesystem::path path);
-
-  void set_status(status);
-  void set_content_type(const std::string);
-  const std::string &to_string() const { return m_raw; }
-
-private:
-  std::string m_raw;
-  status m_status;
-  std::string m_content_type;
-
-  response(std::string raw) : m_raw(std::move(raw)) {}
-};
-
-using path_handler = std::function<response(request)>;
-using middleware_handler = std::function<request(request)>;
-
 struct router {
+public:
+  void get(const std::string, path_handler);
+  void post(const std::string, path_handler);
+  void put(const std::string, path_handler);
+  void delet(const std::string, path_handler);
+  void patch(const std::string, path_handler);
+
+  void use(path_handler midware) { m_midwares.insert(m_midwares.begin(), midware); };
+
+  router(std::string base = "") : m_base(base), m_routes() {};
+
 private:
   struct route {
   public:
@@ -170,20 +187,9 @@ private:
 
   std::string m_base;
   std::vector<route> m_routes;
-  middleware_handler m_mh = nullptr;
+  std::vector<path_handler> m_midwares;
 
   friend struct app;
-
-public:
-  void get(const std::string, path_handler);
-  void post(const std::string, path_handler);
-  void put(const std::string, path_handler);
-  void delet(const std::string, path_handler);
-  void patch(const std::string, path_handler);
-
-  void use(middleware_handler mh) { m_mh = mh; };
-
-  router(std::string base = "") : m_base(base), m_routes() {};
 };
 
 struct app {

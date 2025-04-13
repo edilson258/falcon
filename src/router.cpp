@@ -1,5 +1,6 @@
 #include <cstring>
 #include <stdexcept>
+#include <vector>
 
 #include "include/fc.hpp"
 #include "router.hpp"
@@ -26,6 +27,7 @@ void router::patch(const std::string path, path_handler handler) {
   m_routes.push_back(route(method::PATCH, path, handler));
 }
 
+// TODO: normalize in place to avoid std::string allocation
 std::string root_router::normalize_path(const std::string_view &input) {
   bool prevSlash = false;
   std::string output;
@@ -40,6 +42,7 @@ std::string root_router::normalize_path(const std::string_view &input) {
   return output;
 }
 
+// TODO: return vec of string_views to avoid std::string alloc.
 std::vector<std::string> root_router::split_path(const std::string_view &path) {
   std::vector<std::string> frags;
   auto normalPath = normalize_path(path);
@@ -51,11 +54,11 @@ std::vector<std::string> root_router::split_path(const std::string_view &path) {
   return frags;
 }
 
-void root_router::add(method method, const std::string path, path_handler handler, middleware_handler mh) {
-  auto pathFragments = split_path(path);
+void root_router::add(method method, const std::string path, path_handler handler, const std::vector<path_handler> &midwares) {
+  auto path_fragments = split_path(path);
   frag *current = &m_root;
 
-  for (const auto &frg : pathFragments) {
+  for (const auto &frg : path_fragments) {
     frag_type type;
     switch (frg.at(0)) {
     case ':': type = frag_type::DYNAMIC; break;
@@ -68,7 +71,7 @@ void root_router::add(method method, const std::string path, path_handler handle
     frag *child = current->m_child;
     while (child) {
       if ((type == frag_type::STATIC && child->m_label == frg) || (type != frag_type::STATIC && child->m_type == type)) {
-        if (type == frag_type::DYNAMIC && child->m_label != frg && (child->m_handlers && child->m_handlers->at((int)method))) {
+        if (type == frag_type::DYNAMIC && child->m_label != frg && (child->m_handlers && !child->m_handlers->at((int)method).empty())) {
           throw std::runtime_error("Conflicting dynamic segment names: " + child->m_label + " vs " + frg);
         }
         found = true;
@@ -92,14 +95,14 @@ void root_router::add(method method, const std::string path, path_handler handle
   if (!current->m_handlers) {
     current->m_handlers = new frag_handlers_t();
   }
-  if (current->m_handlers->at(static_cast<int>(method))) {
+  if (!current->m_handlers->at(static_cast<int>(method)).empty()) {
     throw std::runtime_error("Duplicate route for method " + std::to_string(static_cast<int>(method)) + " at path: " + path);
   }
-  current->m_middleware = mh;
-  current->m_handlers->at(static_cast<int>(method)) = handler;
+  current->m_handlers->at(static_cast<int>(method)).insert(current->m_handlers->at(static_cast<int>(method)).begin(), handler);
+  current->m_handlers->at(static_cast<int>(method)).insert(current->m_handlers->at(static_cast<int>(method)).end(), midwares.begin(), midwares.end());
 }
 
-path_handler root_router::match(request &req) const {
+bool root_router::match(request &req) const {
   auto fragments = split_path(req.m_path);
   const frag *current = &m_root;
   for (auto &frg : fragments) {
@@ -112,7 +115,9 @@ path_handler root_router::match(request &req) const {
         found = true;
         req.m_params.push_back({child->m_label, frg});
         break;
-      case frag_type::WILDCARD: return child->m_handlers ? child->m_handlers->at(static_cast<int>(req.m_method)) : nullptr;
+      case frag_type::WILDCARD:
+        // TODOOO: fill handler & midware
+        return true;
       }
       if (found) {
         current = child;
@@ -121,13 +126,15 @@ path_handler root_router::match(request &req) const {
       child = child->m_next;
     }
     if (!found) {
-      return nullptr;
+      return false;
     }
   }
-  if (current->m_middleware) {
-    current->m_middleware(req);
+  auto handler = current->m_handlers->at(static_cast<int>(req.m_method));
+  if (handler.empty()) {
+    return false;
   }
-  return current->m_handlers ? current->m_handlers->at((int)req.m_method) : nullptr;
+  req.m_handlers.insert(req.m_handlers.begin(), handler.begin(), handler.end());
+  return true;
 }
 
 } // namespace fc

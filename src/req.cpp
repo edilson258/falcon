@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -12,6 +13,15 @@
 namespace fc {
 
 request request_factory(void *remote, std::string_view raw) { return request(remote, raw); }
+
+response request::next() {
+  if (m_handlers.size() <= 0) {
+    throw std::runtime_error("No next function");
+  }
+  auto next = m_handlers.back();
+  m_handlers.pop_back();
+  return next(*this);
+}
 
 request::~request() {
   if (m_cookies) delete m_cookies;
