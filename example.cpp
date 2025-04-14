@@ -82,10 +82,11 @@ fc::response logger_middleware(fc::request req) {
 }
 
 fc::response auth_middleware(fc::request req) {
+  static std::string prefix = "Bearer ";
   static std::string token = "uGhTVjLwDb0R/s4xR3mwX/AdymqNbV9htkcRiulIw3E=";
   if (auto authToken = req.get_header("Authorization"); authToken.has_value()) {
-    if (!authToken.value().starts_with("Bearer ")) goto unauthorized;
-    if (authToken.value().substr(7) != token) goto forbidden;
+    if (!authToken.value().starts_with(prefix)) goto unauthorized;
+    if (authToken.value().substr(prefix.length()) != token) goto forbidden;
     return req.next();
   }
 unauthorized:
