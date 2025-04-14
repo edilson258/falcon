@@ -88,7 +88,7 @@ int app::listen(const std::string addr, std::function<void(const std::string &)>
     std::cerr << "[FALCON ERROR]: Failed to listen at " << addr << ", " << uv_strerror(result) << std::endl;
     return -1;
   }
-  call_back(host + ":" + port);
+  if (call_back) call_back(host + ":" + port);
   return uv_run(m_pimpl->m_loop, UV_RUN_DEFAULT);
 }
 

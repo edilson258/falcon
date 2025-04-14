@@ -205,7 +205,7 @@ public:
 
   void use(const router &);
 
-  int listen(const std::string, std::function<void(const std::string &addr)>);
+  int listen(const std::string, std::function<void(const std::string &addr)> = nullptr);
 
 private:
   struct impl;

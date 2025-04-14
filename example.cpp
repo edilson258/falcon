@@ -1,6 +1,5 @@
 #include <cassert>
 #include <cstdlib>
-#include <iostream>
 #include <string>
 #include <vector>
 
@@ -74,10 +73,11 @@ int main(int argc, char *argv[]) {
 
   app.use(router);
 
-  app.listen(":8000", [](auto &addr) { std::cout << "Listening at " << addr << std::endl; });
+  app.listen(":8000");
 }
 
 fc::response logger_middleware(fc::request req) {
+  // log something here
   return req.next();
 }
 
