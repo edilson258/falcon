@@ -1,3 +1,8 @@
+// Copyright (c) 2025 Edilson Pateguana
+// All rights reserved
+//
+// This software is provided under
+
 #pragma once
 
 #include <filesystem>
@@ -12,6 +17,9 @@
 
 namespace fc {
 
+/*
+ *  http method
+ */
 enum class method {
   GET = 0,
   POST,
@@ -23,6 +31,9 @@ enum class method {
   COUNT,
 };
 
+/*
+ *  http status code
+ */
 enum class status {
   // 1xx: Informational
   //
@@ -102,14 +113,26 @@ enum class status {
   NETWORK_AUTHENTICATION_REQUIRED = 511
 };
 
+/*
+ * Is the object that contain all necessary info. about the new connection
+ */
 struct request;
+
+/*
+ * Is the object that has all info. needed to send a response to the user
+ */
 struct response;
 
+/*
+ * Is the fiunction called to handle routes and middlewares
+ */
 using path_handler = std::function<response(request)>;
 
 struct response {
 public:
+  // creates new successfully response instance by default
   static const response ok(status stats = status::OK);
+  // creates new json response
   static const response json(nlohmann::json, status status = status::OK);
   static const response send(const std::filesystem::path path);
 
@@ -133,12 +156,14 @@ public:
 
   nlohmann::json json();
   method get_method() const { return m_method; }
+  // returns a ptr to libuv tcp handler aka `uv_tcp_t *` as void ptr
   const void *get_remote() const { return m_uvremote; }
   const std::string_view &get_raw() const { return m_raw; };
   const std::string_view &get_path() const { return m_path; }
   std::optional<std::string> get_param(const std::string &) const;
   std::optional<std::string_view> get_header(const std::string &) const;
   std::optional<std::string_view> get_cookie(const std::string &);
+  // pass control to the next handler and must be called only inside of middlewares
   response next();
 
 private:
@@ -153,7 +178,7 @@ private:
   struct cookies;
   cookies *m_cookies;
 
-  // middlewares + main handler
+  // middlewares + main path handler
   std::vector<path_handler> m_handlers;
 
   request(void *remote, std::string_view raw) : m_uvremote(remote), m_raw(raw) {};
@@ -163,14 +188,24 @@ private:
   friend request request_factory(void *remote, std::string_view raw);
 };
 
+/*
+ *  Groups routes together under same base path and accepts
+ *    middlewares that get called for all contained routes
+ */
 struct router {
 public:
+  // adds a new GET request
   void get(const std::string, path_handler);
+  // adds a new POST request
   void post(const std::string, path_handler);
+  // adds a new PUT request
   void put(const std::string, path_handler);
+  // adds a new DELETE request
   void delet(const std::string, path_handler);
+  // adds a new PATCH request
   void patch(const std::string, path_handler);
 
+  // registry a new middleware
   void use(path_handler midware) { m_midwares.insert(m_midwares.begin(), midware); };
 
   router(std::string base = "") : m_base(base), m_routes() {};
@@ -192,19 +227,29 @@ private:
   friend struct app;
 };
 
+/*
+ * Is the backbone for a falcon application
+ */
 struct app {
 public:
   app();
   ~app();
 
+  // adds a new GET request
   void get(const std::string, path_handler);
+  // adds a new POST request
   void post(const std::string, path_handler);
+  // adds a new PUT request
   void put(const std::string, path_handler);
+  // adds a new DELETE request
   void delet(const std::string, path_handler);
+  // adds a new PATCH request
   void patch(const std::string, path_handler);
 
+  // applys all routes contained in `route` instance into the root_router
   void use(const router &);
 
+  // start listening for incoming requests at the specified address
   int listen(const std::string, std::function<void(const std::string &addr)>);
 
 private:
