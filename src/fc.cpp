@@ -1,9 +1,10 @@
+#include <cstddef>
 #include <cstdio>
 #include <cstring>
 #include <fcntl.h>
 #include <filesystem>
+#include <format>
 #include <iostream>
-#include <limits>
 #include <string>
 #include <string_view>
 #include <sys/param.h>
@@ -17,6 +18,7 @@
 #include "include/fc.hpp"
 #include "req.hpp"
 #include "router.hpp"
+#include "src/templates.hpp"
 #include "utils.hpp"
 
 #define FC_BACKLOG (128)
@@ -42,6 +44,11 @@ public:
   void parse_http_request(request);
   void match_request_to_handler(request);
   void send_response(request, response);
+
+  // static files: images, css, js, ...
+  static void try_serve_static_file(request);
+  static void on_read_static_chunck(uv_fs_t *);
+  static void on_write_static_head(uv_write_t *, int);
 
   void add_route(method, const std::string, path_handler, const std::vector<path_handler> &);
 
@@ -141,78 +148,103 @@ void app::impl::parse_http_request(request req) {
   match_request_to_handler(std::move(req));
 }
 
-// #include <iostream>
-// #include <string>
-// #include <vector>
-// #include <sstream>
-// #include <filesystem>
-// #include <stdexcept>
+struct send_static_info {
+public:
+  int m_file_fd;
+  uv_tcp_t *m_remote;
+  char m_chunck[64 * 1024]; // 64KB
 
-// namespace fs = std::filesystem;
+  send_static_info(int fd, uv_tcp_t *remote) : m_file_fd(fd), m_remote(remote) {};
+};
 
-// std::string normalize_path(const std::string& base_dir, const std::string& input_path) {
-//     fs::path base(base_dir);
-//     fs::path requested_path = fs::path(input_path).lexically_normal();
-
-//     // Resolve the absolute path by combining base_dir and requested_path
-//     fs::path full_path = fs::canonical(base / requested_path);
-
-//     // Check if the file path is still inside the base directory
-//     if (full_path.string().find(base.string()) != 0) {
-//         throw std::invalid_argument("Access outside of allowed directory is not permitted.");
-//     }
-
-//     return full_path.string();  // Return the normalized, absolute path
-// }
-
-// int main() {
-//     try {
-//         std::string base_dir = "public";  // The allowed directory for static files
-//         std::string requested_path = "../style.css";  // Example input path (malicious)
-
-//         std::string safe_path = normalize_path(base_dir, requested_path);
-//         std::cout << "Safe, normalized path: " << safe_path << std::endl;
-
-//     } catch (const std::invalid_argument& e) {
-//         std::cerr << "Error: " << e.what() << std::endl;
-//     }
-
-//     return 0;
-// }
-
-namespace fs = std::filesystem;
-
-void on_open_static_file(uv_fs_t *req) {
-  if (req->file < 0) {
-    // send 404
+void app::impl::on_write_static_head(uv_write_t *write_req, int status) {
+  if (status < 0) {
+    std::cerr << "[FALCON ERROR]: Failed to write static file header, " << uv_strerror(status) << std::endl;
+    return;
   }
-  uv_fs_t *fs_req = new uv_fs_t;
-  fs_req->data = req->data;
-  printf("Stat %d %zu\n", req->file, req->statbuf.st_size);
+
+  // write chunked body
+  auto *send_info = (send_static_info *)write_req->data;
+  uv_fs_t *read_req = new uv_fs_t;
+  read_req->data = send_info;
+  uv_buf_t *read_buf = new uv_buf_t;
+  *read_buf = uv_buf_init(send_info->m_chunck, sizeof(send_info->m_chunck));
+  uv_fs_read(uv_default_loop(), read_req, send_info->m_file_fd, read_buf, 1, -1, app::impl::on_read_static_chunck);
 }
 
-void try_serve_static_file(request req) {
-  fs::path base = fs::path(FC_PUBLIC_DIR);
-  fs::path full_path = base.concat(req.get_path()).lexically_normal().make_preferred();
+void app::impl::on_read_static_chunck(uv_fs_t *read_req) {
+  send_static_info *send_info = (send_static_info *)read_req->data;
+
+  if (read_req->result > 0) {
+    printf("Read %zu %.*s\n", read_req->result, (int)read_req->result, read_req->bufs->base);
+
+    std::string content = std::format("{:x}\r\n{}\r\n", read_req->result, read_req->bufs->base);
+    printf("\n%s\n", content.c_str());
+    uv_buf_t *write_buf = new uv_buf_t;
+    *write_buf = uv_buf_init(strndup(content.c_str(), content.length()), content.length());
+    uv_write_t *write_req = new uv_write_t;
+    uv_write(write_req, (uv_stream_t *)send_info->m_remote, write_buf, 1, nullptr);
+
+    uv_fs_read(uv_default_loop(), read_req, send_info->m_file_fd, read_req->bufs, 1, -1, app::impl::on_read_static_chunck);
+    return;
+  }
+
+  std::string content = std::format("0\r\n\r\n");
+  uv_buf_t *write_buf = new uv_buf_t;
+  *write_buf = uv_buf_init(strndup(content.c_str(), content.length()), content.length());
+  uv_write_t *write_req = new uv_write_t;
+  uv_write(write_req, (uv_stream_t *)send_info->m_remote, write_buf, 1, nullptr);
+
+  if (read_req->result < 0) {
+    fprintf(stderr, "[FALCON ERROR]: Failed to read from static file, %s\n", uv_strerror(read_req->result));
+  }
+
+  // close connection
+  uv_close((uv_handle_t *)send_info->m_remote, app::impl::on_close_conn);
+
+  // close static file
+  uv_fs_t close_req;
+  uv_fs_close(uv_default_loop(), &close_req, send_info->m_file_fd, nullptr);
+
+  // clean up
+  delete send_info;
+  delete read_req;
+}
+
+void app::impl::try_serve_static_file(request req) {
+  std::filesystem::path base = std::filesystem::path(FC_PUBLIC_DIR);
+  std::filesystem::path full_path = base.concat(req.get_path()).lexically_normal().make_preferred();
+
   if (full_path.string().find(base.string()) != 0) {
     // probably is a path traversal attack
     // send 404
   }
 
-  const char *path = strndup(full_path.c_str(), MAXPATHLEN);
-  printf("Path: %s\n", path);
-  uv_fs_t *fs_req = new uv_fs_t;
-  uv_tcp_t *remote = (uv_tcp_t *)req.get_remote();
-  fs_req->data = remote;
-  uv_fs_open(remote->loop, fs_req, path, UV_FS_O_RDONLY, S_IRUSR, on_open_static_file);
+  uv_fs_t *open_req = new uv_fs_t;
+  open_req->data = (void *)req.get_remote();
+
+  uv_fs_open(uv_default_loop(), open_req, strndup(full_path.c_str(), MAXPATHLEN), O_RDONLY, 0, [](uv_fs_t *open_req) {
+    if (open_req->result < 0) {
+      return; // send 404
+    }
+
+    auto send_info = new send_static_info(open_req->result, (uv_tcp_t *)open_req->data);
+
+    // write chunked header
+    std::string head = std::format(templates::HTTP_HEADER_CHUNCKED, 200, "OK", "text/css");
+    uv_buf_t *head_buf = new uv_buf_t;
+    *head_buf = uv_buf_init(strndup(head.c_str(), head.length()), head.length());
+    uv_write_t *write_head_req = new uv_write_t;
+    write_head_req->data = send_info;
+    uv_write(write_head_req, (uv_stream_t *)send_info->m_remote, head_buf, 1, app::impl::on_write_static_head);
+  });
 }
 
 void app::impl::match_request_to_handler(request req) {
   if (m_router.match(req)) {
-    auto res = req.next();
-    return send_response(std::move(req), std::move(res));
+    return send_response(std::move(req), req.next());
   }
-  try_serve_static_file(req);
+  app::impl::try_serve_static_file(std::move(req));
 }
 
 void app::impl::send_response(request req, response res) {

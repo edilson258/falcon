@@ -20,6 +20,7 @@ const response response::json(nlohmann::json j, status stats) {
   return response(std::move(std::format(templates::HTTP_RESPONSE_FORMAT, static_cast<int>(stats), status_to_string(stats), "application/json", xs.length(), std::move(xs))));
 }
 
+// TODO: read file async.
 const response response::render(const std::string &filename, status stats) {
   const std::string path = "views/" + filename + ".html";
   if (!std::filesystem::exists(path)) {
