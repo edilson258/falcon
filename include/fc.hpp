@@ -158,7 +158,7 @@ private:
   std::vector<std::pair<std::string_view, std::string>> m_params;
   std::vector<std::pair<std::string_view, std::string_view>> m_headers;
   struct cookies;
-  cookies *m_cookies;
+  cookies *m_cookies = nullptr;
 
   // middlewares + main handler
   std::vector<path_handler> m_handlers;
@@ -217,7 +217,6 @@ public:
 private:
   struct impl;
   impl *m_pimpl;
-  friend struct impl;
 
   friend void parse_http_request(request);
 };

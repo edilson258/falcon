@@ -17,6 +17,7 @@
 #include "include/fc.hpp"
 #include "req.hpp"
 #include "router.hpp"
+#include "signals.h"
 #include "templates.hpp"
 #include "utils.hpp"
 
@@ -77,7 +78,11 @@ public:
   }
 };
 
-app::app() : m_pimpl(new app::impl()) {}
+app::app() {
+  signals::ignore_sigpipe(); // must be called before any uv functions
+  m_pimpl = new app::impl();
+}
+
 app::~app() { delete m_pimpl; }
 
 void app::get(const std::string path, path_handler handler) {
@@ -152,7 +157,8 @@ void app::impl::on_read_buf(uv_stream_t *client, long nread, const uv_buf_t *buf
     uv_close((uv_handle_t *)client, app::impl::on_close_conn);
     return;
   }
-  ((app::impl *)client->loop->data)->parse_http_request(request_factory((void *)client, std::string_view(buf->base, strnlen(buf->base, MAX_REQ_LEN))));
+  app::impl *app_impl = (app::impl *)client->loop->data;
+  app_impl->parse_http_request(request_factory((void *)client, std::string_view(buf->base, strnlen(buf->base, MAX_REQ_LEN))));
 }
 
 void app::impl::parse_http_request(request req) {

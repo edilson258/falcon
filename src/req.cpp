@@ -46,8 +46,8 @@ std::optional<std::string_view> request::get_cookie(const std::string &name) {
   }
   if (!m_cookies) {
     m_cookies = new cookies();
-    m_cookies->parsed = true;
     m_cookies->parse(cookies_header.value());
+    m_cookies->parsed = true;
   }
   return m_cookies->get(name);
 }
