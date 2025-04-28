@@ -1,3 +1,4 @@
+#include <cassert>
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
@@ -6,19 +7,19 @@
 #include <filesystem>
 #include <iostream>
 #include <string>
-#include <string_view>
 #include <sys/param.h>
+#include <utility>
 #include <uv.h>
+#include <uv/unix.h>
 #include <vector>
 
 #include "external/llhttp/llhttp.h"
 
+#include "consts.h"
 #include "http.hpp"
 #include "include/fc.hpp"
-#include "req.hpp"
 #include "router.hpp"
 #include "signals.h"
-#include "templates.hpp"
 #include "utils.hpp"
 
 #define FC_BACKLOG (128)
@@ -44,14 +45,11 @@ public:
   void parse_http_request(request);
   void match_request_to_handler(request);
   void send_response(request, response);
+  bool try_serve_static_file(request);
 
-  // static files: images, css, js, ...
-  static void try_serve_static_file(request);
-  static void on_open_static_file(uv_fs_t *);
-  static void on_read_static_chunck(uv_fs_t *);
-  static void on_write_static_chunck(uv_write_t *, int);
-  static void on_write_static_head(uv_write_t *, int);
-  static void on_close_static_file(uv_fs_t *);
+  static void send_file(const char *path_buf, uv_stream_t *remote);
+  static void on_open_file(uv_fs_t *);
+  static void on_read_file_chunk(uv_fs_t *);
 
   void add_route(method, const std::string, path_handler, const std::vector<path_handler> &);
 
@@ -59,17 +57,18 @@ public:
   static void on_connection(uv_stream_t *server, int status);
   static void on_alloc_buf(uv_handle_t *client, size_t size, uv_buf_t *buf);
   static void on_read_buf(uv_stream_t *client, long nread, const uv_buf_t *buf);
-  static void on_write_response(uv_write_t *req, int status);
+  static void on_write_buf(uv_write_t *req, int status);
+  static void on_write_and_close(uv_write_t *req, int status);
   static void on_close_conn(uv_handle_t *client);
 };
 
-struct send_static_info {
+struct send_file_ctx {
 public:
   int m_file_fd;
-  uv_tcp_t *m_remote;
+  uv_stream_t *m_remote;
   char m_chunck[64 * 1024]; // 64KB
 
-  send_static_info(int fd, uv_tcp_t *remote) : m_file_fd(fd), m_remote(remote) {
+  send_file_ctx(int fd, uv_stream_t *remote) : m_file_fd(fd), m_remote(remote) {
     reset_chunk();
   };
 
@@ -111,6 +110,10 @@ void app::use(const router &router) {
   }
 }
 
+void app::impl::add_route(method method, const std::string path, path_handler handler, const std::vector<path_handler> &midwares) {
+  m_router.add(method, path, handler, midwares);
+}
+
 int app::listen(const std::string addr, std::function<void(const std::string &)> call_back) {
   auto [host, port] = split_address(addr);
   uv_ip4_addr(host.c_str(), std::stoi(port), &m_pimpl->m_addr);
@@ -143,9 +146,10 @@ void app::impl::on_connection(uv_stream_t *host, int status) {
   uv_read_start((uv_stream_t *)remote, app::impl::on_alloc_buf, app::impl::on_read_buf);
 }
 
-void app::impl::on_alloc_buf(uv_handle_t *client, size_t size, uv_buf_t *buf) {
-  buf->len = size;
-  buf->base = new char[size];
+void app::impl::on_alloc_buf(uv_handle_t *client, size_t len, uv_buf_t *buf) {
+  buf->len = len;
+  buf->base = new char[len];
+  // std::memset(buf->base, 0, len);
 }
 
 void app::impl::on_read_buf(uv_stream_t *client, long nread, const uv_buf_t *buf) {
@@ -155,10 +159,11 @@ void app::impl::on_read_buf(uv_stream_t *client, long nread, const uv_buf_t *buf
       std::cerr << "[FALCON ERROR]: Failed to read remote socket, " << uv_strerror(nread) << std::endl;
     delete[] buf->base;
     uv_close((uv_handle_t *)client, app::impl::on_close_conn);
-    return;
+  } else {
+    auto this_ = (app::impl *)client->loop->data;
+    request req = request((void *)client, buf->base);
+    this_->parse_http_request(req);
   }
-  app::impl *app_impl = (app::impl *)client->loop->data;
-  app_impl->parse_http_request(request_factory((void *)client, std::string_view(buf->base, strnlen(buf->base, MAX_REQ_LEN))));
 }
 
 void app::impl::parse_http_request(request req) {
@@ -175,133 +180,140 @@ void app::impl::match_request_to_handler(request req) {
   if (m_router.match(req)) {
     return send_response(std::move(req), req.next());
   }
-  app::impl::try_serve_static_file(std::move(req));
+  if (method::GET != req.m_method || !try_serve_static_file(std::move(req))) {
+    return send_response(std::move(req), response::ok(status::NOT_FOUND));
+  }
 }
 
-void app::impl::try_serve_static_file(request req) {
-  std::filesystem::path base = std::filesystem::path(FC_PUBLIC_DIR);
-  std::filesystem::path full_path = base.concat(req.get_path()).lexically_normal().make_preferred();
+bool app::impl::try_serve_static_file(request req) {
+  auto path = validate_and_resolve_path(std::string(FC_PUBLIC_DIR), std::string(req.m_path));
+  if (path.has_value()) {
+    auto res = response(status::OK, path->string(), true);
+    res.set_header("Transfer-Encoding", "chunked");
+    res.set_header("Content-Type", get_content_from_extension(path->extension().string()));
+    send_response(std::move(req), std::move(res));
+    return true;
+  }
+  return false;
+}
 
-  if (full_path.string().find(base.string()) != 0) {
-    // probably is a path traversal attack
-    // send 404
+char *serialize_headers(const std::vector<std::pair<std::string, std::string>> &headers) {
+  size_t len = 0;
+  for (const auto &header : headers) {
+    len += header.first.length() + header.second.length() + 4;
+  }
+  char *buf = new char[len + 1];
+  size_t offset = 0;
+  for (const auto &header : headers) {
+    std::memcpy(buf + offset, header.first.data(), header.first.length());
+    offset += header.first.length();
+    std::memcpy(buf + offset, ": ", 2);
+    offset += 2;
+    std::memcpy(buf + offset, header.second.data(), header.second.length());
+    offset += header.second.length();
+    std::memcpy(buf + offset, "\r\n", 2);
+    offset += 2;
+  }
+  buf[offset] = '\0';
+  return buf;
+}
+
+void app::impl::send_response(request req, response res) {
+  auto statstr = status_to_string(res.m_status);
+  auto headers = serialize_headers(res.m_headers);
+  auto header_len = snprintf(nullptr, 0, http_header_cfmt, (int)res.m_status, statstr, headers);
+  auto header_buf = new char[header_len + 1];
+  snprintf(header_buf, header_len + 1, http_header_cfmt, (int)res.m_status, statstr, headers);
+  uv_buf_t write_buf = uv_buf_init(header_buf, header_len);
+  uv_write_t *write_req = new uv_write_t;
+  write_req->data = header_buf;
+  uv_write(write_req, (uv_stream_t *)req.m_uvremote, &write_buf, 1, app::impl::on_write_buf);
+
+  if (res.m_isfile) {
+    app::impl::send_file(cstr_from_string(res.m_body), (uv_stream_t *)req.m_uvremote);
+  } else {
+    auto body_len = res.m_body.length();
+    auto body_buf = new char[body_len + 1];
+    std::memcpy(body_buf, res.m_body.data(), body_len);
+    body_buf[body_len] = '\0';
+    uv_buf_t body_write_buf = uv_buf_init(body_buf, body_len);
+    uv_write_t *body_write_req = new uv_write_t;
+    body_write_req->data = body_buf;
+    uv_write(body_write_req, (uv_stream_t *)req.m_uvremote, &body_write_buf, 1, app::impl::on_write_and_close);
   }
 
-  char *path = new char[full_path.string().length() + 1];
-  strncpy(path, full_path.string().c_str(), full_path.string().length());
-  path[full_path.string().length()] = '\0';
-
-  uv_fs_t *open_req = new uv_fs_t;
-  open_req->data = (void *)req.get_remote();
-  uv_fs_open(uv_default_loop(), open_req, path, O_RDONLY, 0, app::impl::on_open_static_file);
+  delete[] headers;
 }
 
-void app::impl::on_open_static_file(uv_fs_t *open_req) {
+void app::impl::on_write_buf(uv_write_t *req, int status) {
+  if (status < 0) {
+    std::cerr << "[FALCON ERROR]: Failed to write response buf, " << uv_strerror(status) << std::endl;
+  }
+  if (req->data) delete[] (char *)req->data;
+  delete req;
+}
+
+void app::impl::on_write_and_close(uv_write_t *req, int status) {
+  auto remote = (uv_handle_t *)req->handle;
+  on_write_buf(req, status);
+  uv_close(remote, app::impl::on_close_conn);
+}
+
+void app::impl::send_file(const char *path_buf, uv_stream_t *remote) {
+  uv_fs_t *open_req = new uv_fs_t;
+  open_req->data = new send_file_ctx(-1, remote);
+  uv_fs_open(uv_default_loop(), open_req, path_buf, O_RDONLY, 0, app::impl::on_open_file);
+}
+
+void app::impl::on_open_file(uv_fs_t *open_req) {
   if (open_req->result < 0) {
     std::cerr << "[FALCON ERROR]: Failed to open static file, " << uv_strerror(open_req->result) << std::endl;
   } else {
-    auto send_info = new send_static_info(open_req->result, (uv_tcp_t *)open_req->data);
-    size_t header_len = snprintf(nullptr, 0, templates::HTTP_HEADER_CHUNCKED_C_FMT, 200, "OK");
-    char *header = new char[header_len + 1]; // TODO: clean free this memory
-    // TODO: send `content type` header
-    snprintf(header, header_len + 1, templates::HTTP_HEADER_CHUNCKED_C_FMT, 200, "OK");
-    uv_buf_t head_buf = uv_buf_init(header, header_len);
-    uv_write_t *write_req = new uv_write_t;
-    write_req->data = send_info;
-    uv_write(write_req, (uv_stream_t *)send_info->m_remote, &head_buf, 1, app::impl::on_write_static_head);
+    auto ctx = (send_file_ctx *)open_req->data;
+    ctx->m_file_fd = open_req->result;
+    uv_fs_t *read_req = new uv_fs_t;
+    read_req->data = ctx;
+    uv_buf_t read_buf = uv_buf_init(ctx->m_chunck, sizeof(ctx->m_chunck));
+    uv_fs_read(uv_default_loop(), read_req, ctx->m_file_fd, &read_buf, 1, -1, app::impl::on_read_file_chunk);
   }
-
   delete[] open_req->path;
   delete open_req;
 }
 
-void app::impl::on_write_static_head(uv_write_t *write_req, int status) {
-  if (status < 0) {
-    std::cerr << "[FALCON ERROR]: Failed to write static file header, " << uv_strerror(status) << std::endl;
-  } else {
-    // start reading and sending file in chuncks
-    auto *send_info = (send_static_info *)write_req->data;
-    uv_fs_t *read_req = new uv_fs_t;
-    read_req->data = send_info;
-    uv_buf_t read_buf = uv_buf_init(send_info->m_chunck, sizeof(send_info->m_chunck));
-    uv_fs_read(uv_default_loop(), read_req, send_info->m_file_fd, &read_buf, 1, -1, app::impl::on_read_static_chunck);
-  }
-  delete write_req;
-}
-
-void app::impl::on_read_static_chunck(uv_fs_t *read_req) {
-  send_static_info *send_info = (send_static_info *)read_req->data;
+void app::impl::on_read_file_chunk(uv_fs_t *read_req) {
+  auto *ctx = (send_file_ctx *)read_req->data;
 
   if (read_req->result > 0) {
-    // send read chunck
-    size_t content_length = snprintf(nullptr, 0, "%x\r\n%s\r\n", (unsigned int)read_req->result, read_req->bufs[0].base);
-    char *content = new char[content_length + 1]; // TODO: clean this memory
-    snprintf(content, content_length + 1, "%x\r\n%s\r\n", (unsigned int)read_req->result, read_req->bufs[0].base);
-    uv_buf_t write_buf = uv_buf_init(content, content_length);
+    size_t chunk_len = snprintf(nullptr, 0, "%x\r\n%s\r\n", (unsigned int)read_req->result, read_req->bufs[0].base);
+    char *chunk_buf = new char[chunk_len + 1];
+    snprintf(chunk_buf, chunk_len + 1, "%x\r\n%s\r\n", (unsigned int)read_req->result, read_req->bufs[0].base);
+
+    uv_buf_t write_buf = uv_buf_init(chunk_buf, chunk_len);
     uv_write_t *write_req = new uv_write_t;
-    uv_write(write_req, (uv_stream_t *)send_info->m_remote, &write_buf, 1, app::impl::on_write_static_chunck);
+    write_req->data = chunk_buf;
+    uv_write(write_req, ctx->m_remote, &write_buf, 1, app::impl::on_write_buf);
 
-    // read next chunck
-    send_info->reset_chunk();
-    uv_fs_read(uv_default_loop(), read_req, send_info->m_file_fd, read_req->bufs, 1, -1, app::impl::on_read_static_chunck);
-    return;
+    // read next chunk
+    ctx->reset_chunk();
+    uv_fs_read(uv_default_loop(), read_req, ctx->m_file_fd, read_req->bufs, 1, -1, app::impl::on_read_file_chunk);
+  } else {
+    if (read_req->result < 0) {
+      fprintf(stderr, "[FALCON ERROR]: Failed to read from static file, %s\n", uv_strerror(read_req->result));
+    }
+
+    static char *last_chunk = (char *)"0\r\n\r\n";
+    auto last_chunk_buf = uv_buf_init(last_chunk, strlen(last_chunk));
+    uv_write_t *write_req = new uv_write_t;
+    write_req->data = nullptr;
+    uv_write(write_req, ctx->m_remote, &last_chunk_buf, 1, app::impl::on_write_and_close);
+
+    // close file
+    uv_fs_t close_req;
+    uv_fs_close(uv_default_loop(), &close_req, ctx->m_file_fd, nullptr);
+
+    delete ctx;
+    delete read_req;
   }
-
-  const char *eof = (const char *)"0\r\n\r\n";
-  uv_buf_t write_buf = uv_buf_init(strdup(eof), strlen(eof));
-  uv_write_t *write_req = new uv_write_t;
-  uv_write(write_req, (uv_stream_t *)send_info->m_remote, &write_buf, 1, app::impl::on_write_static_chunck);
-
-  if (read_req->result < 0) {
-    fprintf(stderr, "[FALCON ERROR]: Failed to read from static file, %s\n", uv_strerror(read_req->result));
-  }
-
-  // close connection
-  uv_close((uv_handle_t *)send_info->m_remote, app::impl::on_close_conn);
-
-  // close static file
-  uv_fs_t *close_req = new uv_fs_t;
-  uv_fs_close(uv_default_loop(), close_req, send_info->m_file_fd, app::impl::on_close_static_file);
-
-  // clean up
-  delete send_info;
-  delete read_req;
-}
-
-void app::impl::on_write_static_chunck(uv_write_t *write_req, int status) {
-  if (status < 0) {
-    std::cerr << "[FALCON ERROR]: Failed to write static file chunk, " << uv_strerror(status) << std::endl;
-    return;
-  }
-
-  // TODO: delete bufs->base
-  delete write_req->bufs;
-  delete write_req;
-}
-
-void app::impl::on_close_static_file(uv_fs_t *close_req) {
-  if (close_req->result < 0) {
-    std::cerr << "[FALCON ERROR]: Failed to close static file, " << uv_strerror(close_req->result) << std::endl;
-  }
-  delete close_req;
-}
-
-void app::impl::send_response(request req, response res) {
-  uv_buf_t write_buf = uv_buf_init((char *)res.to_string().c_str(), res.to_string().length());
-  uv_write_t *write_req = new uv_write_t;
-  write_req->data = (void *)req.get_raw().data();
-  uv_write(write_req, (uv_stream_t *)req.get_remote(), &write_buf, 1, app::impl::on_write_response);
-}
-
-void app::impl::add_route(method method, const std::string path, path_handler handler, const std::vector<path_handler> &midwares) {
-  m_router.add(method, path, handler, midwares);
-}
-
-void app::impl::on_write_response(uv_write_t *req, int status) {
-  delete[] (char *)req->data;
-  delete req->bufs;
-  delete req;
-  uv_close((uv_handle_t *)req->handle, app::impl::on_close_conn);
 }
 
 void app::impl::on_close_conn(uv_handle_t *client) {

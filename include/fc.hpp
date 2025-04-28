@@ -21,10 +21,10 @@ namespace fc {
 
 enum class method {
   GET = 0,
-  POST,
-  PUT,
-  DELETE,
-  PATCH,
+  POST = 1,
+  PUT = 2,
+  DELETE = 3,
+  PATCH = 4,
 
   // used internally to keep track of methods len
   COUNT,
@@ -116,32 +116,33 @@ using path_handler = std::function<response(request)>;
 
 struct response {
 public:
-  static const response ok(status stats = status::OK);
-  static const response json(nlohmann::json, status status = status::OK);
-  static const response render(const std::string &filename, status status = status::OK);
+  static response ok(status stats = status::OK);
+  static response json(nlohmann::json, status stats = status::OK);
+  static response render(std::string filename, status stats = status::OK);
 
   void set_status(status);
   status get_status() const { return m_status; }
-  void set_content_type(const std::string);
-  const std::string &to_string() const { return m_raw; }
+  void set_content_type(std::string);
+  void set_header(std::string, std::string);
 
 private:
-  std::string m_raw;
   status m_status;
-  std::string m_content_type;
+  std::vector<std::pair<std::string, std::string>> m_headers;
+  bool m_isfile;
+  // if m_isfile is true, m_body is a file path
+  std::string m_body;
 
-  response(std::string raw) : m_raw(std::move(raw)) {}
+  response(status stats, std::string body, bool isfile) : m_status(stats), m_body(body), m_isfile(isfile) {}
+  friend class app;
 };
 
 struct request {
 public:
-  explicit request() = delete;
+  request() = delete;
   ~request();
 
   nlohmann::json json();
   method get_method() const { return m_method; }
-  const void *get_remote() const { return m_uvremote; }
-  const std::string_view &get_raw() const { return m_raw; };
   const std::string_view &get_path() const { return m_path; }
   std::optional<std::string> get_param(const std::string &) const;
   std::optional<std::string_view> get_header(const std::string &) const;
@@ -152,7 +153,7 @@ private:
   const void *m_uvremote;
 
   method m_method;
-  std::string_view m_raw;
+  const char *m_raw;
   std::string_view m_path;
   std::string_view m_raw_body;
   std::vector<std::pair<std::string_view, std::string>> m_params;
@@ -163,11 +164,11 @@ private:
   // middlewares + main handler
   std::vector<path_handler> m_handlers;
 
-  request(void *remote, std::string_view raw) : m_uvremote(remote), m_raw(raw) {};
+  request(void *remote, const char *raw) : m_uvremote(remote), m_raw(raw) {};
 
+  friend struct app;
   friend struct root_router;
   friend struct http_parser;
-  friend request request_factory(void *remote, std::string_view raw);
 };
 
 struct router {

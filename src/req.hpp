@@ -14,6 +14,4 @@ struct request::cookies {
   std::optional<std::string_view> get(std::string_view key) const;
 };
 
-request request_factory(void *, std::string_view);
-
 } // namespace fc

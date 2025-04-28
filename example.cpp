@@ -63,8 +63,8 @@ int main(int argc, char *argv[]) {
   fc::router router("/users");
 
   // middlewares
-  router.use(auth_middleware);
-  router.use(logger_middleware);
+  // router.use(auth_middleware);
+  // router.use(logger_middleware);
 
   router.post("", create);
   router.get("", find_many);

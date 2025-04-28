@@ -10,6 +10,7 @@
 - [ ] enhance response struct
 - [ ] enhance response construction mechanism
 - [ ] avoid linear algorithms
+- [ ] enhance headers
 
 ## Big changes
 

@@ -9,8 +9,12 @@ class WebsiteUser(HttpUser):
 
     @task
     def index(self):
-        self.client.get("/hello")
+        self.client.get("/")
 
-    # @task
-    # def about(self):
-    #     self.client.get("/about/")
+    @task
+    def about(self):
+        self.client.get("/users")
+
+    @task
+    def x(self):
+        self.client.get("/users/1")

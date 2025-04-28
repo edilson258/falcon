@@ -8,7 +8,7 @@ namespace fc {
 
 enum llhttp_errno http_parser::parse(request *req) {
   m_llhttp_instance.data = req;
-  enum llhttp_errno err = llhttp_execute(&m_llhttp_instance, req->m_raw.data(), req->m_raw.length());
+  enum llhttp_errno err = llhttp_execute(&m_llhttp_instance, req->m_raw, strlen(req->m_raw));
   llhttp_reset(&m_llhttp_instance);
   return err;
 }

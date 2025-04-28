@@ -12,8 +12,6 @@
 
 namespace fc {
 
-request request_factory(void *remote, std::string_view raw) { return request(remote, raw); }
-
 response request::next() {
   if (m_handlers.size() <= 0) {
     throw std::runtime_error("No next function");
@@ -24,6 +22,7 @@ response request::next() {
 }
 
 request::~request() {
+  // delete[] m_raw;
   if (m_cookies) delete m_cookies;
 }
 
