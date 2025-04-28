@@ -5,7 +5,7 @@
 
 static constexpr char http_header_cfmt[] = "HTTP/1.1 %d %s\r\n"
                                            "Server: Falcon\r\n"
-                                           "%s\r\n"
+                                           "%s"
                                            "\r\n";
 
 static const std::unordered_map<std::string, std::string> CONTENT_TYPES = {
