@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <iostream>
 #include <regex>
+#include <string_view>
 
 #include "consts.h"
 #include "utils.hpp"
@@ -17,13 +18,19 @@ std::tuple<std::string, std::string> split_address(const std::string &input) {
   return {"0.0.0.0", "8080"};
 }
 
-std::optional<std::filesystem::path> validate_and_resolve_path(std::string base_str, std::string path_str) {
+std::optional<std::filesystem::path> validate_and_resolve_path(std::string &base_str, std::string_view &path_str) {
   auto base = std::filesystem::absolute(std::filesystem::path(base_str));
   auto full = base.concat(path_str).lexically_normal().make_preferred();
   auto [base_end, _] = std::mismatch(base.begin(), base.end(), full.begin(), full.end());
   if (base_end != base.end())
     return std::nullopt;
-  return base;
+  return full;
+}
+
+std::filesystem::path join_paths(const std::string &base_str, const std::string &path_str) {
+  auto base = std::filesystem::absolute(std::filesystem::path(base_str));
+  auto full = base.concat(path_str).lexically_normal().make_preferred();
+  return full;
 }
 
 char *cstr_from_string(const std::string &str) {

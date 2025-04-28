@@ -29,6 +29,9 @@ namespace fc {
 
 struct app::impl {
 public:
+  std::string m_views_dir = "views/";
+  std::string m_assets_dir = "public/";
+
   root_router m_router;
   http_parser m_http_parser;
 
@@ -115,6 +118,14 @@ void app::use(const router &router) {
   }
 }
 
+void app::set_views_dir(const std::string dir_path) {
+  m_pimpl->m_views_dir = dir_path;
+}
+
+void app::set_assets_dir(const std::string dir_path) {
+  m_pimpl->m_assets_dir = dir_path;
+}
+
 void app::impl::add_route(method method, const std::string path, path_handler handler, const std::vector<path_handler> &midwares) {
   m_router.add(method, path, handler, midwares);
 }
@@ -190,9 +201,9 @@ void app::impl::match_request_to_handler(request req) {
 }
 
 bool app::impl::try_serve_static_file(request req) {
-  auto path = validate_and_resolve_path(std::string(FC_PUBLIC_DIR), std::string(req.m_path));
+  auto path = validate_and_resolve_path(m_assets_dir, req.m_path);
   if (path.has_value()) {
-    auto res = response(status::OK, path->string(), true);
+    auto res = response(status::OK, response::file_info(false, path->string()));
     res.set_header("Transfer-Encoding", "chunked");
     res.set_header("Content-Type", get_content_from_extension(path->extension().string()));
     send_response(std::move(req), std::move(res));
@@ -230,8 +241,10 @@ void app::impl::send_response(request req, response res) {
   write_req->data = header_buf;
   uv_write(write_req, (uv_stream_t *)req.m_uvsock, &write_buf, 1, app::impl::on_write_buf);
 
-  if (res.m_isfile) {
-    app::impl::send_file(cstr_from_string(res.m_body), (uv_stream_t *)req.m_uvsock);
+  if (res.m_is_file) {
+    response::file_info &fi = res.m_file_info;
+    auto path = fi.m_is_view ? join_paths(m_views_dir, fi.m_path).string() : fi.m_path;
+    app::impl::send_file(cstr_from_string(path), (uv_stream_t *)req.m_uvsock);
   } else {
     auto body_len = res.m_body.length();
     auto body_buf = new char[body_len + 1];

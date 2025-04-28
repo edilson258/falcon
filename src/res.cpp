@@ -1,5 +1,4 @@
 #include <cstring>
-#include <filesystem>
 #include <string>
 #include <utility>
 
@@ -10,7 +9,7 @@ namespace fc {
 
 response response::ok(status stats) {
   auto body = status_to_string(stats);
-  auto res = response(stats, body, false);
+  auto res = response(stats, body);
   res.set_content_type("text/plain");
   res.set_header("Content-Len", std::to_string(strlen(body)));
   return res;
@@ -18,19 +17,14 @@ response response::ok(status stats) {
 
 response response::json(nlohmann::json j, status stats) {
   auto body = j.dump();
-  auto res = response(stats, body, false);
+  auto res = response(stats, body);
   res.set_content_type("application/json");
   res.set_header("Content-Len", std::to_string(body.length()));
   return res;
 }
 
 response response::render(std::string filename, status stats) {
-  // TODO: allow users to specify a custom path
-  std::string path = "views/" + filename + ".html";
-  if (!std::filesystem::exists(path)) {
-    return response::ok(status::INTERNAL_SERVER_ERROR);
-  }
-  auto res = response(stats, std::move(path), true);
+  auto res = response(stats, response::file_info(true, filename));
   res.set_content_type("text/html");
   res.set_header("Transfer-Encoding", "chunked");
   return res;

@@ -11,14 +11,6 @@
 
 namespace fc {
 
-#if !defined(FC_VIEWS_DIR)
-#define FC_VIEWS_DIR = "views/"
-#endif
-
-#if !defined(FC_PUBLIC_DIR)
-#define FC_PUBLIC_DIR "public/"
-#endif
-
 enum class method {
   GET = 0,
   POST = 1,
@@ -128,11 +120,20 @@ public:
 private:
   status m_status;
   std::vector<std::pair<std::string, std::string>> m_headers;
-  bool m_isfile;
-  // if m_isfile is true, m_body is a file path
   std::string m_body;
 
-  response(status stats, std::string body, bool isfile) : m_status(stats), m_body(body), m_isfile(isfile) {}
+  bool m_is_file;
+  struct file_info {
+    bool m_is_view;
+    std::string m_path;
+
+    file_info() = default;
+    file_info(bool is_view, std::string path) : m_is_view(is_view), m_path(std::move(path)) {};
+  };
+  file_info m_file_info;
+
+  response(status stats, file_info fi) : m_status(stats), m_is_file(true), m_file_info(std::move(fi)) {}
+  response(status stats, std::string body) : m_status(stats), m_body(body), m_is_file(false) {}
   friend class app;
 };
 
@@ -210,6 +211,9 @@ public:
   void put(const std::string, path_handler);
   void delet(const std::string, path_handler);
   void patch(const std::string, path_handler);
+
+  void set_views_dir(const std::string);
+  void set_assets_dir(const std::string);
 
   void use(const router &);
 
