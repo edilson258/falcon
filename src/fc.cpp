@@ -32,7 +32,6 @@ public:
   root_router m_router;
   http_parser m_http_parser;
 
-  // The 'm_loop->data' field always holds a pointer to an object of this struct
   uv_loop_t *m_loop;
   uv_tcp_t m_host_sock;
   struct sockaddr_in m_addr;
@@ -46,12 +45,7 @@ public:
   void match_request_to_handler(request);
   void send_response(request, response);
   bool try_serve_static_file(request);
-
-  static void send_file(const char *path_buf, uv_stream_t *remote);
-  static void on_open_file(uv_fs_t *);
-  static void on_read_file_chunk(uv_fs_t *);
-
-  void add_route(method, const std::string, path_handler, const std::vector<path_handler> &);
+  void send_file(const char *path_buf, uv_stream_t *remote);
 
   // uv callbacks
   static void on_connection(uv_stream_t *server, int status);
@@ -60,6 +54,10 @@ public:
   static void on_write_buf(uv_write_t *req, int status);
   static void on_write_and_close(uv_write_t *req, int status);
   static void on_close_conn(uv_handle_t *client);
+  static void on_open_file(uv_fs_t *);
+  static void on_read_file_chunk(uv_fs_t *);
+
+  void add_route(method, const std::string, path_handler, const std::vector<path_handler> &);
 };
 
 struct send_file_ctx {
@@ -71,6 +69,13 @@ public:
   send_file_ctx(int fd, uv_stream_t *remote) : m_file_fd(fd), m_remote(remote) {
     reset_chunk();
   };
+
+  ~send_file_ctx() {
+    if (m_file_fd != -1) {
+      uv_fs_t close_req;
+      uv_fs_close(uv_default_loop(), &close_req, m_file_fd, nullptr);
+    }
+  }
 
   void reset_chunk() {
     memset(m_chunck, 0, sizeof(m_chunck));
@@ -149,7 +154,7 @@ void app::impl::on_connection(uv_stream_t *host, int status) {
 void app::impl::on_alloc_buf(uv_handle_t *client, size_t len, uv_buf_t *buf) {
   buf->len = len;
   buf->base = new char[len];
-  // std::memset(buf->base, 0, len);
+  std::memset(buf->base, 0, len);
 }
 
 void app::impl::on_read_buf(uv_stream_t *client, long nread, const uv_buf_t *buf) {
@@ -215,10 +220,12 @@ void app::impl::send_response(request req, response res) {
     headers_offset += 2;
   }
   headers[headers_offset] = '\0';
+
   auto statstr = status_to_string(res.m_status);
   auto header_len = snprintf(nullptr, 0, http_header_cfmt, (int)res.m_status, statstr, headers);
   auto header_buf = new char[header_len + 1];
   snprintf(header_buf, header_len + 1, http_header_cfmt, (int)res.m_status, statstr, headers);
+
   uv_buf_t write_buf = uv_buf_init(header_buf, header_len);
   uv_write_t *write_req = new uv_write_t;
   write_req->data = header_buf;
@@ -231,25 +238,12 @@ void app::impl::send_response(request req, response res) {
     auto body_buf = new char[body_len + 1];
     std::memcpy(body_buf, res.m_body.data(), body_len);
     body_buf[body_len] = '\0';
+
     uv_buf_t body_write_buf = uv_buf_init(body_buf, body_len);
     uv_write_t *body_write_req = new uv_write_t;
     body_write_req->data = body_buf;
     uv_write(body_write_req, (uv_stream_t *)req.m_uvremote, &body_write_buf, 1, app::impl::on_write_and_close);
   }
-}
-
-void app::impl::on_write_buf(uv_write_t *req, int status) {
-  if (status < 0) {
-    std::cerr << "[FALCON ERROR]: Failed to write response buf, " << uv_strerror(status) << std::endl;
-  }
-  if (req->data) delete[] (char *)req->data;
-  delete req;
-}
-
-void app::impl::on_write_and_close(uv_write_t *req, int status) {
-  auto remote = (uv_handle_t *)req->handle;
-  on_write_buf(req, status);
-  uv_close(remote, app::impl::on_close_conn);
 }
 
 void app::impl::send_file(const char *path_buf, uv_stream_t *remote) {
@@ -300,13 +294,23 @@ void app::impl::on_read_file_chunk(uv_fs_t *read_req) {
     write_req->data = nullptr;
     uv_write(write_req, ctx->m_remote, &last_chunk_buf, 1, app::impl::on_write_and_close);
 
-    // close file
-    uv_fs_t close_req;
-    uv_fs_close(uv_default_loop(), &close_req, ctx->m_file_fd, nullptr);
-
     delete ctx;
     delete read_req;
   }
+}
+
+void app::impl::on_write_buf(uv_write_t *req, int status) {
+  if (status < 0) {
+    std::cerr << "[FALCON ERROR]: Failed to write response buf, " << uv_strerror(status) << std::endl;
+  }
+  if (req->data) delete[] (char *)req->data;
+  delete req;
+}
+
+void app::impl::on_write_and_close(uv_write_t *req, int status) {
+  auto remote = (uv_handle_t *)req->handle;
+  on_write_buf(req, status);
+  uv_close(remote, app::impl::on_close_conn);
 }
 
 void app::impl::on_close_conn(uv_handle_t *client) {
