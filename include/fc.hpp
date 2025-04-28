@@ -150,10 +150,10 @@ public:
   response next();
 
 private:
-  const void *m_uvremote;
+  const char *m_raw;
+  const void *m_uvsock;
 
   method m_method;
-  const char *m_raw;
   std::string_view m_path;
   std::string_view m_raw_body;
   std::vector<std::pair<std::string_view, std::string>> m_params;
@@ -164,7 +164,7 @@ private:
   // middlewares + main handler
   std::vector<path_handler> m_handlers;
 
-  request(void *remote, const char *raw) : m_uvremote(remote), m_raw(raw) {};
+  request(const char *raw, void *remote) : m_raw(raw), m_uvsock(remote) {};
 
   friend struct app;
   friend struct root_router;

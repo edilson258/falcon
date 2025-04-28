@@ -29,6 +29,8 @@ int http_parser::llhttp_on_method(llhttp_t *p, const char *at, size_t len) {
     r->m_method = method::PUT;
   else if (strncmp("DELETE", at, len) == 0)
     r->m_method = method::DELETE;
+  else if (strncmp("PATCH", at, len) == 0)
+    r->m_method = method::PATCH;
   else
     return HPE_INVALID_METHOD;
   return HPE_OK;

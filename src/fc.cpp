@@ -48,14 +48,14 @@ public:
   void send_file(const char *path_buf, uv_stream_t *remote);
 
   // uv callbacks
-  static void on_connection(uv_stream_t *server, int status);
-  static void on_alloc_buf(uv_handle_t *client, size_t size, uv_buf_t *buf);
-  static void on_read_buf(uv_stream_t *client, long nread, const uv_buf_t *buf);
-  static void on_write_buf(uv_write_t *req, int status);
-  static void on_write_and_close(uv_write_t *req, int status);
   static void on_close_conn(uv_handle_t *client);
   static void on_open_file(uv_fs_t *);
   static void on_read_file_chunk(uv_fs_t *);
+  static void on_connection(uv_stream_t *server, int status);
+  static void on_write_buf(uv_write_t *req, int status);
+  static void on_write_and_close(uv_write_t *req, int status);
+  static void on_alloc_buf(uv_handle_t *client, size_t size, uv_buf_t *buf);
+  static void on_read_buf(uv_stream_t *client, long nread, const uv_buf_t *buf);
 
   void add_route(method, const std::string, path_handler, const std::vector<path_handler> &);
 };
@@ -166,17 +166,16 @@ void app::impl::on_read_buf(uv_stream_t *client, long nread, const uv_buf_t *buf
     uv_close((uv_handle_t *)client, app::impl::on_close_conn);
   } else {
     auto this_ = (app::impl *)client->loop->data;
-    request req = request((void *)client, buf->base);
+    request req = request(buf->base, (void *)client);
     this_->parse_http_request(req);
   }
 }
 
 void app::impl::parse_http_request(request req) {
   enum llhttp_errno err = m_http_parser.parse(&req);
-  if (HPE_OK != err && HPE_INVALID_METHOD != err) {
-    // send 'bad request' response
+  if (HPE_OK != err) {
     std::cerr << "[FALCON ERROR]: Faild to parse request, " << llhttp_errno_name(err) << std::endl;
-    return;
+    return send_response(std::move(req), response::ok(status::BAD_REQUEST));
   }
   match_request_to_handler(std::move(req));
 }
@@ -229,10 +228,10 @@ void app::impl::send_response(request req, response res) {
   uv_buf_t write_buf = uv_buf_init(header_buf, header_len);
   uv_write_t *write_req = new uv_write_t;
   write_req->data = header_buf;
-  uv_write(write_req, (uv_stream_t *)req.m_uvremote, &write_buf, 1, app::impl::on_write_buf);
+  uv_write(write_req, (uv_stream_t *)req.m_uvsock, &write_buf, 1, app::impl::on_write_buf);
 
   if (res.m_isfile) {
-    app::impl::send_file(cstr_from_string(res.m_body), (uv_stream_t *)req.m_uvremote);
+    app::impl::send_file(cstr_from_string(res.m_body), (uv_stream_t *)req.m_uvsock);
   } else {
     auto body_len = res.m_body.length();
     auto body_buf = new char[body_len + 1];
@@ -242,7 +241,7 @@ void app::impl::send_response(request req, response res) {
     uv_buf_t body_write_buf = uv_buf_init(body_buf, body_len);
     uv_write_t *body_write_req = new uv_write_t;
     body_write_req->data = body_buf;
-    uv_write(body_write_req, (uv_stream_t *)req.m_uvremote, &body_write_buf, 1, app::impl::on_write_and_close);
+    uv_write(body_write_req, (uv_stream_t *)req.m_uvsock, &body_write_buf, 1, app::impl::on_write_and_close);
   }
 }
 
@@ -253,16 +252,18 @@ void app::impl::send_file(const char *path_buf, uv_stream_t *remote) {
 }
 
 void app::impl::on_open_file(uv_fs_t *open_req) {
+  auto ctx = (send_file_ctx *)open_req->data;
+
   if (open_req->result < 0) {
-    std::cerr << "[FALCON ERROR]: Failed to open static file, " << uv_strerror(open_req->result) << std::endl;
+    std::cerr << "[FALCON ERROR]: Failed to open file, " << uv_strerror(open_req->result) << std::endl;
   } else {
-    auto ctx = (send_file_ctx *)open_req->data;
     ctx->m_file_fd = open_req->result;
     uv_fs_t *read_req = new uv_fs_t;
     read_req->data = ctx;
     uv_buf_t read_buf = uv_buf_init(ctx->m_chunck, sizeof(ctx->m_chunck));
     uv_fs_read(uv_default_loop(), read_req, ctx->m_file_fd, &read_buf, 1, -1, app::impl::on_read_file_chunk);
   }
+
   delete[] open_req->path;
   delete open_req;
 }
