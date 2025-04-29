@@ -11,7 +11,6 @@ response response::ok(status stats) {
   auto body = status_to_string(stats);
   auto res = response(stats, body);
   res.set_content_type("text/plain");
-  res.set_header("Content-Len", std::to_string(strlen(body)));
   return res;
 }
 
@@ -19,14 +18,12 @@ response response::json(nlohmann::json j, status stats) {
   auto body = j.dump();
   auto res = response(stats, body);
   res.set_content_type("application/json");
-  res.set_header("Content-Len", std::to_string(body.length()));
   return res;
 }
 
-response response::render(std::string filename, status stats) {
-  auto res = response(stats, response::file_info(true, filename));
+response response::render(std::string path, status stats) {
+  auto res = response(stats, response::file_info(path, true));
   res.set_content_type("text/html");
-  res.set_header("Transfer-Encoding", "chunked");
   return res;
 }
 

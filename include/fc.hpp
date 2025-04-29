@@ -110,7 +110,7 @@ struct response {
 public:
   static response ok(status stats = status::OK);
   static response json(nlohmann::json, status stats = status::OK);
-  static response render(std::string filename, status stats = status::OK);
+  static response render(std::string path, status stats = status::OK);
 
   void set_status(status);
   status get_status() const { return m_status; }
@@ -128,7 +128,7 @@ private:
     std::string m_path;
 
     file_info() = default;
-    file_info(bool is_view, std::string path) : m_is_view(is_view), m_path(std::move(path)) {};
+    file_info(std::string path, bool is_view = false) : m_is_view(is_view), m_path(std::move(path)) {};
   };
   file_info m_file_info;
 

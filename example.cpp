@@ -60,7 +60,6 @@ int main(int argc, char *argv[]) {
   users.push_back(user_schema("milkey@test.com", "strongpass"));
 
   fc::app app;
-
   app.set_views_dir("views/");
   app.set_assets_dir("public/");
 
@@ -75,9 +74,11 @@ int main(int argc, char *argv[]) {
   router.get("/:id", find_by_id);
   router.delet("/:id", delet);
 
-  app.get("/", [](fc::request req) { return fc::response::render("index.html"); });
-  app.use(router);
+  app.get("/", [](fc::request req) {
+    return fc::response::render("index.html");
+  });
 
+  app.use(router);
   app.listen(":8000");
 }
 

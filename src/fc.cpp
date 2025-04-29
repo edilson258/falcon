@@ -46,9 +46,11 @@ public:
 
   void parse_http_request(request);
   void match_request_to_handler(request);
+
+  // reponse handlers
   void send_response(request, response);
-  bool try_serve_static_file(request);
-  void send_file(const char *path_buf, uv_stream_t *remote);
+  void send_response_file(request, response);
+  void send_response_header(request &, response &);
 
   // uv callbacks
   static void on_close_conn(uv_handle_t *client);
@@ -195,42 +197,42 @@ void app::impl::match_request_to_handler(request req) {
   if (m_router.match(req)) {
     return send_response(std::move(req), req.next());
   }
-  if (method::GET != req.m_method || !try_serve_static_file(std::move(req))) {
+
+  if (method::GET != req.m_method) {
     return send_response(std::move(req), response::ok(status::NOT_FOUND));
   }
+
+  // Try serve static file
+  // TOOD: protect against path traversal attacks
+  auto path = join_paths(m_assets_dir, std::string(req.m_path));
+  auto res = response(status::OK, response::file_info(path.string()));
+  res.set_header("Content-Type", get_content_from_extension(path.extension().string()));
+  send_response(std::move(req), std::move(res));
 }
 
-bool app::impl::try_serve_static_file(request req) {
-  auto path = validate_and_resolve_path(m_assets_dir, req.m_path);
-  if (path.has_value()) {
-    auto res = response(status::OK, response::file_info(false, path->string()));
-    res.set_header("Transfer-Encoding", "chunked");
-    res.set_header("Content-Type", get_content_from_extension(path->extension().string()));
-    send_response(std::move(req), std::move(res));
-    return true;
+char *serialize_headers(const std::vector<std::pair<std::string, std::string>> &headers) {
+  size_t buf_len = 0;
+  size_t buf_offs = 0;
+  for (const auto &h : headers) {
+    buf_len += h.first.length() + h.second.length() + 4;
   }
-  return false;
+  char *buf = new char[buf_len + 1];
+  for (const auto &h : headers) {
+    std::memcpy(buf + buf_offs, h.first.data(), h.first.length());
+    buf_offs += h.first.length();
+    std::memcpy(buf + buf_offs, ": ", 2);
+    buf_offs += 2;
+    std::memcpy(buf + buf_offs, h.second.data(), h.second.length());
+    buf_offs += h.second.length();
+    std::memcpy(buf + buf_offs, "\r\n", 2);
+    buf_offs += 2;
+  }
+  buf[buf_offs] = '\0';
+  return buf;
 }
 
-void app::impl::send_response(request req, response res) {
-  size_t headers_len = 0;
-  for (const auto &header : res.m_headers) {
-    headers_len += header.first.length() + header.second.length() + 4;
-  }
-  char headers[headers_len + 1];
-  size_t headers_offset = 0;
-  for (const auto &header : res.m_headers) {
-    std::memcpy(headers + headers_offset, header.first.data(), header.first.length());
-    headers_offset += header.first.length();
-    std::memcpy(headers + headers_offset, ": ", 2);
-    headers_offset += 2;
-    std::memcpy(headers + headers_offset, header.second.data(), header.second.length());
-    headers_offset += header.second.length();
-    std::memcpy(headers + headers_offset, "\r\n", 2);
-    headers_offset += 2;
-  }
-  headers[headers_offset] = '\0';
-
+void app::impl::send_response_header(request &req, response &res) {
+  auto headers = serialize_headers(res.m_headers);
   auto statstr = status_to_string(res.m_status);
   auto header_len = snprintf(nullptr, 0, http_header_cfmt, (int)res.m_status, statstr, headers);
   auto header_buf = new char[header_len + 1];
@@ -241,27 +243,39 @@ void app::impl::send_response(request req, response res) {
   write_req->data = header_buf;
   uv_write(write_req, (uv_stream_t *)req.m_uvsock, &write_buf, 1, app::impl::on_write_buf);
 
-  if (res.m_is_file) {
-    response::file_info &fi = res.m_file_info;
-    auto path = fi.m_is_view ? join_paths(m_views_dir, fi.m_path).string() : fi.m_path;
-    app::impl::send_file(cstr_from_string(path), (uv_stream_t *)req.m_uvsock);
-  } else {
-    auto body_len = res.m_body.length();
-    auto body_buf = new char[body_len + 1];
-    std::memcpy(body_buf, res.m_body.data(), body_len);
-    body_buf[body_len] = '\0';
+  delete[] headers;
+}
 
-    uv_buf_t body_write_buf = uv_buf_init(body_buf, body_len);
+void app::impl::send_response(request req, response res) {
+  if (res.m_is_file) {
+    send_response_file(std::move(req), std::move(res));
+  } else {
+    res.set_header("Content-Len", std::to_string(res.m_body.length()));
+    send_response_header(req, res);
+
+    auto buf_len = res.m_body.length();
+    auto buf = new char[buf_len + 1];
+    std::memcpy(buf, res.m_body.data(), buf_len);
+    buf[buf_len] = '\0';
+
+    uv_buf_t body_write_buf = uv_buf_init(buf, buf_len);
     uv_write_t *body_write_req = new uv_write_t;
-    body_write_req->data = body_buf;
+    body_write_req->data = buf;
     uv_write(body_write_req, (uv_stream_t *)req.m_uvsock, &body_write_buf, 1, app::impl::on_write_and_close);
   }
 }
 
-void app::impl::send_file(const char *path_buf, uv_stream_t *remote) {
+void app::impl::send_response_file(request req, response res) {
+  response::file_info &fi = res.m_file_info;
+  if (fi.m_is_view) {
+    fi.m_path = join_paths(m_views_dir, fi.m_path).string();
+  }
+  // check if file exists before sending headers
+  res.set_header("Transfer-Encoding", "chunked");
+  send_response_header(req, res);
   uv_fs_t *open_req = new uv_fs_t;
-  open_req->data = new send_file_ctx(-1, remote);
-  uv_fs_open(uv_default_loop(), open_req, path_buf, O_RDONLY, 0, app::impl::on_open_file);
+  open_req->data = new send_file_ctx(-1, (uv_stream_t *)req.m_uvsock);
+  uv_fs_open(uv_default_loop(), open_req, cstr_from_string(fi.m_path), O_RDONLY, 0, app::impl::on_open_file);
 }
 
 void app::impl::on_open_file(uv_fs_t *open_req) {
