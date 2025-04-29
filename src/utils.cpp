@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <iostream>
 #include <regex>
+#include <termios.h>
 #include <tuple>
 
 #include "consts.h"
@@ -28,10 +29,11 @@ char *cstr_from_string(const std::string &str) {
   char *cstr = new char[str.length() + 1];
   std::copy(str.begin(), str.end(), cstr);
   cstr[str.length()] = '\0';
+  printf("Path: %s\n", cstr);
   return cstr;
 }
 
-std::string get_content_from_extension(const std::string &ext) {
+std::string contype_from_ext(const std::string &ext) {
   auto it = CONTENT_TYPES.find(ext);
   if (it != CONTENT_TYPES.end()) return it->second;
   return "application/octet-stream";

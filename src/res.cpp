@@ -15,8 +15,7 @@ response response::ok(status stats) {
 }
 
 response response::json(nlohmann::json j, status stats) {
-  auto body = j.dump();
-  auto res = response(stats, body);
+  auto res = response(stats, j.dump());
   res.set_content_type("application/json");
   return res;
 }

@@ -50,7 +50,8 @@ public:
   // reponse handlers
   void send_response(request, response);
   void send_response_file(request, response);
-  void send_response_header(request &, response &);
+  static void send_response_head(request &, response &);
+  static void send_response_body(request, response);
 
   // uv callbacks
   static void on_close_conn(uv_handle_t *client);
@@ -59,8 +60,8 @@ public:
   static void on_connection(uv_stream_t *server, int status);
   static void on_write_buf(uv_write_t *req, int status);
   static void on_write_and_close(uv_write_t *req, int status);
-  static void on_alloc_buf(uv_handle_t *client, size_t size, uv_buf_t *buf);
-  static void on_read_buf(uv_stream_t *client, long nread, const uv_buf_t *buf);
+  static void on_alloc_req_buf(uv_handle_t *client, size_t size, uv_buf_t *buf);
+  static void on_read_req_buf(uv_stream_t *client, long nread, const uv_buf_t *buf);
 
   void add_route(method, const std::string, path_handler, const std::vector<path_handler> &);
 };
@@ -68,10 +69,12 @@ public:
 struct send_file_ctx {
 public:
   int m_file_fd;
-  uv_stream_t *m_remote;
   char m_chunck[64 * 1024]; // 64KB
 
-  send_file_ctx(int fd, uv_stream_t *remote) : m_file_fd(fd), m_remote(remote) {
+  request m_req;
+  response m_res;
+
+  send_file_ctx(int fd, request req, response res) : m_file_fd(fd), m_req(std::move(req)), m_res(std::move(res)) {
     reset_chunk();
   };
 
@@ -161,16 +164,16 @@ void app::impl::on_connection(uv_stream_t *host, int status) {
     std::cerr << "[FALCON ERROR]: Failed to accept new connection, " << uv_strerror(result) << std::endl;
     return;
   }
-  uv_read_start((uv_stream_t *)remote, app::impl::on_alloc_buf, app::impl::on_read_buf);
+  uv_read_start((uv_stream_t *)remote, app::impl::on_alloc_req_buf, app::impl::on_read_req_buf);
 }
 
-void app::impl::on_alloc_buf(uv_handle_t *client, size_t len, uv_buf_t *buf) {
+void app::impl::on_alloc_req_buf(uv_handle_t *client, size_t len, uv_buf_t *buf) {
   buf->len = len;
   buf->base = new char[len];
   std::memset(buf->base, 0, len);
 }
 
-void app::impl::on_read_buf(uv_stream_t *client, long nread, const uv_buf_t *buf) {
+void app::impl::on_read_req_buf(uv_stream_t *client, long nread, const uv_buf_t *buf) {
   uv_read_stop(client);
   if (nread < 0) {
     if (nread != UV_EOF)
@@ -202,37 +205,31 @@ void app::impl::match_request_to_handler(request req) {
     return send_response(std::move(req), response::ok(status::NOT_FOUND));
   }
 
-  // Try serve static file
-  // TOOD: protect against path traversal attacks
   auto path = join_paths(m_assets_dir, std::string(req.m_path));
   auto res = response(status::OK, response::file_info(path.string()));
-  res.set_header("Content-Type", get_content_from_extension(path.extension().string()));
-  send_response(std::move(req), std::move(res));
+  res.set_header("Content-Type", contype_from_ext(path.extension().string()));
+  send_response_file(std::move(req), std::move(res));
 }
 
-char *serialize_headers(const std::vector<std::pair<std::string, std::string>> &headers) {
-  size_t buf_len = 0;
-  size_t buf_offs = 0;
-  for (const auto &h : headers) {
-    buf_len += h.first.length() + h.second.length() + 4;
+void app::impl::send_response_head(request &req, response &res) {
+  size_t headers_len = 0;
+  size_t headers_offs = 0;
+  for (const auto &h : res.m_headers) {
+    headers_len += h.first.length() + h.second.length() + 4;
   }
-  char *buf = new char[buf_len + 1];
-  for (const auto &h : headers) {
-    std::memcpy(buf + buf_offs, h.first.data(), h.first.length());
-    buf_offs += h.first.length();
-    std::memcpy(buf + buf_offs, ": ", 2);
-    buf_offs += 2;
-    std::memcpy(buf + buf_offs, h.second.data(), h.second.length());
-    buf_offs += h.second.length();
-    std::memcpy(buf + buf_offs, "\r\n", 2);
-    buf_offs += 2;
+  char headers[headers_len + 1];
+  for (const auto &h : res.m_headers) {
+    std::memcpy(headers + headers_offs, h.first.data(), h.first.length());
+    headers_offs += h.first.length();
+    std::memcpy(headers + headers_offs, ": ", 2);
+    headers_offs += 2;
+    std::memcpy(headers + headers_offs, h.second.data(), h.second.length());
+    headers_offs += h.second.length();
+    std::memcpy(headers + headers_offs, "\r\n", 2);
+    headers_offs += 2;
   }
-  buf[buf_offs] = '\0';
-  return buf;
-}
+  headers[headers_offs] = '\0';
 
-void app::impl::send_response_header(request &req, response &res) {
-  auto headers = serialize_headers(res.m_headers);
   auto statstr = status_to_string(res.m_status);
   auto header_len = snprintf(nullptr, 0, http_header_cfmt, (int)res.m_status, statstr, headers);
   auto header_buf = new char[header_len + 1];
@@ -242,48 +239,63 @@ void app::impl::send_response_header(request &req, response &res) {
   uv_write_t *write_req = new uv_write_t;
   write_req->data = header_buf;
   uv_write(write_req, (uv_stream_t *)req.m_uvsock, &write_buf, 1, app::impl::on_write_buf);
-
-  delete[] headers;
 }
+
+void app::impl::send_response_body(request req, response res) {
+  auto content_len = res.m_body.length();
+  auto content = new char[content_len + 1];
+  std::memcpy(content, res.m_body.data(), content_len);
+  content[content_len] = '\0';
+
+  auto uv_buf = uv_buf_init(content, content_len);
+  auto write_req = new uv_write_t;
+  write_req->data = content;
+  uv_write(write_req, (uv_stream_t *)req.m_uvsock, &uv_buf, 1, app::impl::on_write_and_close);
+};
 
 void app::impl::send_response(request req, response res) {
   if (res.m_is_file) {
-    send_response_file(std::move(req), std::move(res));
-  } else {
-    res.set_header("Content-Len", std::to_string(res.m_body.length()));
-    send_response_header(req, res);
-
-    auto buf_len = res.m_body.length();
-    auto buf = new char[buf_len + 1];
-    std::memcpy(buf, res.m_body.data(), buf_len);
-    buf[buf_len] = '\0';
-
-    uv_buf_t body_write_buf = uv_buf_init(buf, buf_len);
-    uv_write_t *body_write_req = new uv_write_t;
-    body_write_req->data = buf;
-    uv_write(body_write_req, (uv_stream_t *)req.m_uvsock, &body_write_buf, 1, app::impl::on_write_and_close);
+    return send_response_file(std::move(req), std::move(res));
   }
+  res.set_header("Content-Len", std::to_string(res.m_body.length()));
+  app::impl::send_response_head(req, res);
+  app::impl::send_response_body(std::move(req), std::move(res));
 }
 
 void app::impl::send_response_file(request req, response res) {
   response::file_info &fi = res.m_file_info;
+
   if (fi.m_is_view) {
     fi.m_path = join_paths(m_views_dir, fi.m_path).string();
   }
-  // check if file exists before sending headers
-  res.set_header("Transfer-Encoding", "chunked");
-  send_response_header(req, res);
+
   uv_fs_t *open_req = new uv_fs_t;
-  open_req->data = new send_file_ctx(-1, (uv_stream_t *)req.m_uvsock);
-  uv_fs_open(uv_default_loop(), open_req, cstr_from_string(fi.m_path), O_RDONLY, 0, app::impl::on_open_file);
+  const char *path = fi.m_path.c_str();
+  open_req->data = new send_file_ctx(-1, std::move(req), std::move(res));
+  uv_fs_open(uv_default_loop(), open_req, path, O_RDONLY, 0, app::impl::on_open_file);
 }
 
 void app::impl::on_open_file(uv_fs_t *open_req) {
   auto ctx = (send_file_ctx *)open_req->data;
+  response::file_info &fi = ctx->m_res.m_file_info;
 
   if (open_req->result < 0) {
-    std::cerr << "[FALCON ERROR]: Failed to open file, " << uv_strerror(open_req->result) << std::endl;
+    std::cerr << "[FALCON ERROR]: Failed to open file: " << open_req->path << ", " << uv_strerror(open_req->result) << std::endl;
+
+    response res = response::ok(status::NOT_FOUND);
+    if (fi.m_is_view) {
+      res = response::ok(status::INTERNAL_SERVER_ERROR);
+    }
+    res.set_header("Content-Len", std::to_string(res.m_body.length()));
+    app::impl::send_response_head(ctx->m_req, res);
+    app::impl::send_response_body(std::move(ctx->m_req), std::move(res));
+
+    // clean up
+    delete ctx;
   } else {
+    ctx->m_res.set_header("Transfer-Encoding", "chunked");
+    send_response_head(ctx->m_req, ctx->m_res);
+
     ctx->m_file_fd = open_req->result;
     uv_fs_t *read_req = new uv_fs_t;
     read_req->data = ctx;
@@ -291,7 +303,6 @@ void app::impl::on_open_file(uv_fs_t *open_req) {
     uv_fs_read(uv_default_loop(), read_req, ctx->m_file_fd, &read_buf, 1, -1, app::impl::on_read_file_chunk);
   }
 
-  delete[] open_req->path;
   delete open_req;
 }
 
@@ -306,7 +317,7 @@ void app::impl::on_read_file_chunk(uv_fs_t *read_req) {
     uv_buf_t write_buf = uv_buf_init(chunk_buf, chunk_len);
     uv_write_t *write_req = new uv_write_t;
     write_req->data = chunk_buf;
-    uv_write(write_req, ctx->m_remote, &write_buf, 1, app::impl::on_write_buf);
+    uv_write(write_req, (uv_stream_t *)ctx->m_req.m_uvsock, &write_buf, 1, app::impl::on_write_buf);
 
     // read next chunk
     ctx->reset_chunk();
@@ -320,7 +331,7 @@ void app::impl::on_read_file_chunk(uv_fs_t *read_req) {
     auto last_chunk_buf = uv_buf_init(last_chunk, strlen(last_chunk));
     uv_write_t *write_req = new uv_write_t;
     write_req->data = nullptr;
-    uv_write(write_req, ctx->m_remote, &last_chunk_buf, 1, app::impl::on_write_and_close);
+    uv_write(write_req, (uv_stream_t *)ctx->m_req.m_uvsock, &last_chunk_buf, 1, app::impl::on_write_and_close);
 
     delete ctx;
     delete read_req;
@@ -337,7 +348,7 @@ void app::impl::on_write_buf(uv_write_t *req, int status) {
 
 void app::impl::on_write_and_close(uv_write_t *req, int status) {
   auto remote = (uv_handle_t *)req->handle;
-  on_write_buf(req, status);
+  app::impl::on_write_buf(req, status);
   uv_close(remote, app::impl::on_close_conn);
 }
 
