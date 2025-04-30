@@ -6,7 +6,7 @@
 #include <termios.h>
 #include <tuple>
 
-#include "consts.h"
+#include "const.hpp"
 #include "utils.hpp"
 
 std::tuple<std::string, std::string> split_address(const std::string &input) {
@@ -23,14 +23,6 @@ std::filesystem::path join_paths(const std::string &base_str, const std::string 
   auto base = std::filesystem::absolute(std::filesystem::path(base_str));
   auto full = base.concat(path_str).lexically_normal().make_preferred();
   return full;
-}
-
-char *cstr_from_string(const std::string &str) {
-  char *cstr = new char[str.length() + 1];
-  std::copy(str.begin(), str.end(), cstr);
-  cstr[str.length()] = '\0';
-  printf("Path: %s\n", cstr);
-  return cstr;
 }
 
 std::string contype_from_ext(const std::string &ext) {

@@ -5,7 +5,6 @@
 #include <cstring>
 #include <fcntl.h>
 #include <filesystem>
-#include <iostream>
 #include <string>
 #include <sys/param.h>
 #include <utility>
@@ -15,7 +14,8 @@
 
 #include "external/llhttp/llhttp.h"
 
-#include "consts.h"
+#include "const.hpp"
+#include "debug.hpp"
 #include "http.hpp"
 #include "include/fc.hpp"
 #include "router.hpp"
@@ -140,37 +140,31 @@ int app::listen(const std::string addr, std::function<void(const std::string &)>
   uv_ip4_addr(host.c_str(), std::stoi(port), &m_pimpl->m_addr);
   int result = uv_tcp_bind(&m_pimpl->m_host_sock, (const struct sockaddr *)&m_pimpl->m_addr, 0);
   if (result) {
-    std::cerr << "[FALCON ERROR]: Failed to bind at " << addr << ", " << uv_strerror(result) << std::endl;
+    debug::error("Fail to bind at %s, %s", addr.c_str(), uv_strerror(result));
     return -1;
   }
   result = uv_listen((uv_stream_t *)&m_pimpl->m_host_sock, FC_BACKLOG, app::impl::on_connection);
   if (result) {
-    std::cerr << "[FALCON ERROR]: Failed to listen at " << addr << ", " << uv_strerror(result) << std::endl;
+    debug::error("Fail to listen at %s, %s", addr.c_str(), uv_strerror(result));
     return -1;
   }
   if (call_back) call_back(host + ":" + port);
+  debug::info("Event loop spinned");
   return uv_run(m_pimpl->m_loop, UV_RUN_DEFAULT);
 }
 
 void app::impl::on_connection(uv_stream_t *host, int status) {
-  if (status < 0) {
-    std::cerr << "[FALCON ERROR]: Failed to accept new connection, " << uv_strerror(status) << std::endl;
-    return;
-  }
+  if (status < 0) return debug::error("Fail to accept new connection, %s", uv_strerror(status));
   uv_tcp_t *remote = new uv_tcp_t;
   uv_tcp_init(host->loop, remote);
-  int result = uv_accept(host, (uv_stream_t *)remote);
-  if (result != 0) {
-    std::cerr << "[FALCON ERROR]: Failed to accept new connection, " << uv_strerror(result) << std::endl;
-    return;
-  }
+  if (int result = uv_accept(host, (uv_stream_t *)remote); 0 != result)
+    return debug::error("Fail to accept new connection, %s", uv_strerror(result));
   uv_read_start((uv_stream_t *)remote, app::impl::on_alloc_req_buf, app::impl::on_read_req_buf);
 }
 
 void app::impl::on_alloc_req_buf(uv_handle_t *client, size_t len, uv_buf_t *buf) {
   buf->len = len;
   buf->base = new char[len];
-  std::memset(buf->base, 0, len);
 }
 
 void app::impl::on_read_req_buf(uv_stream_t *client, long nread, const uv_buf_t *buf) {
@@ -190,7 +184,7 @@ void app::impl::on_read_req_buf(uv_stream_t *client, long nread, const uv_buf_t 
 void app::impl::parse_http_request(request req) {
   enum llhttp_errno err = m_http_parser.parse(&req);
   if (HPE_OK != err) {
-    std::cerr << "[FALCON ERROR]: Faild to parse request, " << llhttp_errno_name(err) << std::endl;
+    debug::error("Fail to parse http request, %s", llhttp_errno_name(err));
     return send_response(std::move(req), response::ok(status::BAD_REQUEST));
   }
   match_request_to_handler(std::move(req));
@@ -280,7 +274,7 @@ void app::impl::on_open_file(uv_fs_t *open_req) {
   response::file_info &fi = ctx->m_res.m_file_info;
 
   if (open_req->result < 0) {
-    std::cerr << "[FALCON ERROR]: Failed to open file: " << open_req->path << ", " << uv_strerror(open_req->result) << std::endl;
+    debug::error("Fail to open file: %s, %s", open_req->path, uv_strerror(open_req->result));
 
     response res = response::ok(status::NOT_FOUND);
     if (fi.m_is_view) {
@@ -324,7 +318,7 @@ void app::impl::on_read_file_chunk(uv_fs_t *read_req) {
     uv_fs_read(uv_default_loop(), read_req, ctx->m_file_fd, read_req->bufs, 1, -1, app::impl::on_read_file_chunk);
   } else {
     if (read_req->result < 0) {
-      fprintf(stderr, "[FALCON ERROR]: Failed to read from static file, %s\n", uv_strerror(read_req->result));
+      debug::error("Fail to read file chunk, %s", uv_strerror(read_req->result));
     }
 
     static char *last_chunk = (char *)"0\r\n\r\n";
@@ -340,7 +334,7 @@ void app::impl::on_read_file_chunk(uv_fs_t *read_req) {
 
 void app::impl::on_write_buf(uv_write_t *req, int status) {
   if (status < 0) {
-    std::cerr << "[FALCON ERROR]: Failed to write response buf, " << uv_strerror(status) << std::endl;
+    debug::error("Fail to write response chunk, %s", uv_strerror(status));
   }
   if (req->data) delete[] (char *)req->data;
   delete req;

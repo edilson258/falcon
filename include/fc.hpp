@@ -134,7 +134,8 @@ private:
 
   response(status stats, file_info fi) : m_status(stats), m_is_file(true), m_file_info(std::move(fi)) {}
   response(status stats, std::string body) : m_status(stats), m_body(body), m_is_file(false) {}
-  friend class app;
+
+  friend struct app;
 };
 
 struct request {
@@ -222,8 +223,6 @@ public:
 private:
   struct impl;
   impl *m_pimpl;
-
-  friend void parse_http_request(request);
 };
 
 } // namespace fc
