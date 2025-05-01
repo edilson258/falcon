@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cstddef>
+#include <cstdio>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -18,12 +19,7 @@ response request::next() {
   }
   auto next = m_handlers.back();
   m_handlers.pop_back();
-  return next(*this);
-}
-
-request::~request() {
-  // delete[] m_raw;
-  if (m_cookies) delete m_cookies;
+  return next(std::move(*this));
 }
 
 std::optional<std::string_view> request::get_param(const std::string &key) {
@@ -44,7 +40,7 @@ std::optional<std::string_view> request::get_cookie(const std::string &name) {
     return std::nullopt;
   }
   if (!m_cookies) {
-    m_cookies = new cookies();
+    m_cookies = std::make_unique<cookies>();
     m_cookies->parse(cookies_header.value());
     m_cookies->parsed = true;
   }

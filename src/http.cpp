@@ -1,4 +1,3 @@
-#include <cstdio>
 #include <cstring>
 #include <string_view>
 
@@ -8,7 +7,7 @@ namespace fc {
 
 enum llhttp_errno http_parser::parse(request *req) {
   m_llhttp_instance.data = req;
-  enum llhttp_errno err = llhttp_execute(&m_llhttp_instance, req->m_raw, strlen(req->m_raw));
+  enum llhttp_errno err = llhttp_execute(&m_llhttp_instance, req->m_raw.get(), strlen(req->m_raw.get()));
   llhttp_reset(&m_llhttp_instance);
   return err;
 }
@@ -22,18 +21,19 @@ int http_parser::llhttp_on_url(llhttp_t *p, const char *at, size_t len) {
 
 int http_parser::llhttp_on_method(llhttp_t *p, const char *at, size_t len) {
   request *r = (request *)p->data;
-  if (strncmp("GET", at, len) == 0)
+  if (strncasecmp("GET", at, len) == 0) {
     r->m_method = method::GET;
-  else if (strncmp("POST", at, len) == 0)
+  } else if (strncasecmp("POST", at, len) == 0) {
     r->m_method = method::POST;
-  else if (strncmp("PUT", at, len) == 0)
+  } else if (strncasecmp("PUT", at, len) == 0) {
     r->m_method = method::PUT;
-  else if (strncmp("DELETE", at, len) == 0)
+  } else if (strncasecmp("DELETE", at, len) == 0) {
     r->m_method = method::DELETE;
-  else if (strncmp("PATCH", at, len) == 0)
+  } else if (strncasecmp("PATCH", at, len) == 0) {
     r->m_method = method::PATCH;
-  else
+  } else {
     return HPE_INVALID_METHOD;
+  }
   return HPE_OK;
 }
 

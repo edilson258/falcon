@@ -6,6 +6,7 @@
 #include <cstring>
 #include <fcntl.h>
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <sys/param.h>
 #include <utility>
@@ -70,12 +71,13 @@ public:
 struct send_file_ctx {
 public:
   int m_file_fd;
-  char m_chunck[64 * 1024]; // 64KB
+  uv_stream_t *m_remote;
+  char m_chunk[64 * 1024]; // 64KB
 
-  request m_req;
-  response m_res;
+  std::optional<request> m_req;
+  std::optional<response> m_res;
 
-  send_file_ctx(int fd, request req, response res) : m_file_fd(fd), m_req(std::move(req)), m_res(std::move(res)) {
+  send_file_ctx(int fd, uv_stream_t *sock, request req, response res) : m_file_fd(fd), m_remote(sock), m_req(std::move(req)), m_res(std::move(res)) {
     reset_chunk();
   };
 
@@ -87,7 +89,7 @@ public:
   }
 
   void reset_chunk() {
-    memset(m_chunck, 0, sizeof(m_chunck));
+    memset(m_chunk, 0, sizeof(m_chunk));
   }
 };
 
@@ -174,12 +176,12 @@ void app::impl::on_read_req_buf(uv_stream_t *client, long nread, const uv_buf_t 
   if (nread < 0) {
     if (nread != UV_EOF)
       std::cerr << "[FALCON ERROR]: Failed to read remote socket, " << uv_strerror(nread) << std::endl;
-    delete[] buf->base;
+    // delete[] buf->base;
     uv_close((uv_handle_t *)client, app::impl::on_close_conn);
   } else {
     auto this_ = (app::impl *)client->loop->data;
-    request req = request(buf->base, (void *)client);
-    this_->parse_http_request(req);
+    std::unique_ptr<char[]> xs(buf->base);
+    this_->parse_http_request(request((void *)client, std::move(xs)));
   }
 }
 
@@ -234,7 +236,7 @@ void app::impl::send_response_head(request &req, response &res) {
   uv_buf_t write_buf = uv_buf_init(header_buf, header_len);
   uv_write_t *write_req = new uv_write_t;
   write_req->data = header_buf;
-  uv_write(write_req, (uv_stream_t *)req.m_uvsock, &write_buf, 1, app::impl::on_write_buf);
+  uv_write(write_req, (uv_stream_t *)req.m_remote, &write_buf, 1, app::impl::on_write_buf);
 }
 
 void app::impl::send_response_body(request req, response res) {
@@ -246,7 +248,7 @@ void app::impl::send_response_body(request req, response res) {
   auto uv_buf = uv_buf_init(content, content_len);
   auto write_req = new uv_write_t;
   write_req->data = content;
-  uv_write(write_req, (uv_stream_t *)req.m_uvsock, &uv_buf, 1, app::impl::on_write_and_close);
+  uv_write(write_req, (uv_stream_t *)req.m_remote, &uv_buf, 1, app::impl::on_write_and_close);
 };
 
 void app::impl::send_response(request req, response res) {
@@ -267,13 +269,13 @@ void app::impl::send_response_file(request req, response res) {
 
   uv_fs_t *open_req = new uv_fs_t;
   const char *path = fi.m_path.c_str();
-  open_req->data = new send_file_ctx(-1, std::move(req), std::move(res));
+  open_req->data = new send_file_ctx(-1, (uv_stream_t *)req.m_remote, std::move(req), std::move(res));
   uv_fs_open(uv_default_loop(), open_req, path, O_RDONLY, 0, app::impl::on_open_file);
 }
 
 void app::impl::on_open_file(uv_fs_t *open_req) {
   auto ctx = (send_file_ctx *)open_req->data;
-  response::file_info &fi = ctx->m_res.m_file_info;
+  response::file_info &fi = ctx->m_res.value().m_file_info;
 
   if (open_req->result < 0) {
     debug::error("Fail to open file: %s, %s", open_req->path, uv_strerror(open_req->result));
@@ -283,19 +285,23 @@ void app::impl::on_open_file(uv_fs_t *open_req) {
       res = response::ok(status::INTERNAL_SERVER_ERROR);
     }
     res.set_header("Content-Len", std::to_string(res.m_body.length()));
-    app::impl::send_response_head(ctx->m_req, res);
-    app::impl::send_response_body(std::move(ctx->m_req), std::move(res));
+    app::impl::send_response_head(ctx->m_req.value(), res);
+    app::impl::send_response_body(std::move(ctx->m_req.value()), std::move(res));
 
     // clean up
     delete ctx;
   } else {
-    ctx->m_res.set_header("Transfer-Encoding", "chunked");
-    send_response_head(ctx->m_req, ctx->m_res);
+    ctx->m_res.value().set_header("Transfer-Encoding", "chunked");
+    send_response_head(ctx->m_req.value(), ctx->m_res.value());
+
+    // discard the request and response objects since they are no longer needed
+    ctx->m_req.reset();
+    ctx->m_res.reset();
 
     ctx->m_file_fd = open_req->result;
     uv_fs_t *read_req = new uv_fs_t;
     read_req->data = ctx;
-    uv_buf_t read_buf = uv_buf_init(ctx->m_chunck, sizeof(ctx->m_chunck));
+    uv_buf_t read_buf = uv_buf_init(ctx->m_chunk, sizeof(ctx->m_chunk));
     uv_fs_read(uv_default_loop(), read_req, ctx->m_file_fd, &read_buf, 1, -1, app::impl::on_read_file_chunk);
   }
 
@@ -313,7 +319,7 @@ void app::impl::on_read_file_chunk(uv_fs_t *read_req) {
     uv_buf_t write_buf = uv_buf_init(chunk_buf, chunk_len);
     uv_write_t *write_req = new uv_write_t;
     write_req->data = chunk_buf;
-    uv_write(write_req, (uv_stream_t *)ctx->m_req.m_uvsock, &write_buf, 1, app::impl::on_write_buf);
+    uv_write(write_req, ctx->m_remote, &write_buf, 1, app::impl::on_write_buf);
 
     // read next chunk
     ctx->reset_chunk();
@@ -327,7 +333,7 @@ void app::impl::on_read_file_chunk(uv_fs_t *read_req) {
     auto last_chunk_buf = uv_buf_init(last_chunk, strlen(last_chunk));
     uv_write_t *write_req = new uv_write_t;
     write_req->data = nullptr;
-    uv_write(write_req, (uv_stream_t *)ctx->m_req.m_uvsock, &last_chunk_buf, 1, app::impl::on_write_and_close);
+    uv_write(write_req, ctx->m_remote, &last_chunk_buf, 1, app::impl::on_write_and_close);
 
     delete ctx;
     delete read_req;
