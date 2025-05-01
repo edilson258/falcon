@@ -20,6 +20,7 @@
 #include "debug.hpp"
 #include "http.hpp"
 #include "include/fc.hpp"
+#include "req.hpp"
 #include "router.hpp"
 #include "signals.h"
 #include "utils.hpp"
@@ -180,8 +181,13 @@ void app::impl::on_read_req_buf(uv_stream_t *client, long nread, const uv_buf_t 
     uv_close((uv_handle_t *)client, app::impl::on_close_conn);
   } else {
     auto this_ = (app::impl *)client->loop->data;
-    std::unique_ptr<char[]> xs(buf->base);
-    this_->parse_http_request(request((void *)client, std::move(xs)));
+
+    std::unique_ptr<char[]> raw(buf->base);
+    auto req = request();
+    req.m_pimpl->m_remote = client;
+    req.m_pimpl->m_raw = std::move(raw);
+
+    this_->parse_http_request(std::move(req));
   }
 }
 
@@ -199,11 +205,11 @@ void app::impl::match_request_to_handler(request req) {
     return send_response(std::move(req), req.next());
   }
 
-  if (method::GET != req.m_method) {
+  if (method::GET != req.m_pimpl->m_method) {
     return send_response(std::move(req), response::ok(status::NOT_FOUND));
   }
 
-  auto path = join_paths(m_assets_dir, std::string(req.m_path));
+  auto path = join_paths(m_assets_dir, std::string(req.m_pimpl->m_path));
   auto res = response(status::OK, response::file_info(path.string()));
   res.set_header("Content-Type", contype_from_ext(path.extension().string()));
   send_response_file(std::move(req), std::move(res));
@@ -236,7 +242,7 @@ void app::impl::send_response_head(request &req, response &res) {
   uv_buf_t write_buf = uv_buf_init(header_buf, header_len);
   uv_write_t *write_req = new uv_write_t;
   write_req->data = header_buf;
-  uv_write(write_req, (uv_stream_t *)req.m_remote, &write_buf, 1, app::impl::on_write_buf);
+  uv_write(write_req, req.m_pimpl->m_remote, &write_buf, 1, app::impl::on_write_buf);
 }
 
 void app::impl::send_response_body(request req, response res) {
@@ -248,7 +254,7 @@ void app::impl::send_response_body(request req, response res) {
   auto uv_buf = uv_buf_init(content, content_len);
   auto write_req = new uv_write_t;
   write_req->data = content;
-  uv_write(write_req, (uv_stream_t *)req.m_remote, &uv_buf, 1, app::impl::on_write_and_close);
+  uv_write(write_req, req.m_pimpl->m_remote, &uv_buf, 1, app::impl::on_write_and_close);
 };
 
 void app::impl::send_response(request req, response res) {
@@ -269,7 +275,7 @@ void app::impl::send_response_file(request req, response res) {
 
   uv_fs_t *open_req = new uv_fs_t;
   const char *path = fi.m_path.c_str();
-  open_req->data = new send_file_ctx(-1, (uv_stream_t *)req.m_remote, std::move(req), std::move(res));
+  open_req->data = new send_file_ctx(-1, req.m_pimpl->m_remote, std::move(req), std::move(res));
   uv_fs_open(uv_default_loop(), open_req, path, O_RDONLY, 0, app::impl::on_open_file);
 }
 

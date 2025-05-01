@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "include/fc.hpp"
+#include "req.hpp"
 #include "router.hpp"
 
 namespace fc {
@@ -111,7 +112,7 @@ void root_router::add(method method, const std::string path, path_handler handle
 }
 
 bool root_router::match(request &req) const {
-  auto fragments = split_path(normalize_path(req.m_path));
+  auto fragments = split_path(normalize_path(req.m_pimpl->m_path));
   const frag *current = &m_root;
   for (auto frg : fragments) {
     bool found = false;
@@ -121,7 +122,7 @@ bool root_router::match(request &req) const {
       case frag_type::STATIC: found = frg == child->m_label; break;
       case frag_type::DYNAMIC:
         found = true;
-        req.m_params.emplace_back(child->m_label, frg);
+        req.m_pimpl->m_params.emplace_back(child->m_label, frg);
         break;
       case frag_type::WILDCARD:
         // TODOOO: fill handler & midware
@@ -135,9 +136,9 @@ bool root_router::match(request &req) const {
     }
     if (!found) return false;
   }
-  auto handler = current->m_handlers->at(static_cast<int>(req.m_method));
+  auto handler = current->m_handlers->at(static_cast<int>(req.m_pimpl->m_method));
   if (handler.empty()) return false;
-  req.m_handlers.insert(req.m_handlers.begin(), handler.begin(), handler.end());
+  req.m_pimpl->m_handlers.insert(req.m_pimpl->m_handlers.begin(), handler.begin(), handler.end());
   return true;
 }
 

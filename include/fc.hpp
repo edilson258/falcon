@@ -1,7 +1,6 @@
 #pragma once
 
 #include <functional>
-#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -144,51 +143,27 @@ public:
   response next();
 
   nlohmann::json json();
-  method get_method() const { return m_method; }
-  const std::string_view &get_path() const { return m_path; }
+  method get_method();
+  std::string_view &get_path();
 
   std::optional<std::string_view> get_param(const std::string &);
   std::optional<std::string_view> get_header(const std::string &);
   std::optional<std::string_view> get_cookie(const std::string &);
 
-  request() = delete;
-  ~request();
   request(request &&other) noexcept = default;
   request(const request &other) = delete;
   request &operator=(const request &other) = delete;
   request &operator=(request &&other) = delete;
 
 private:
-  const void *m_remote;
-  std::unique_ptr<char[]> m_raw;
+  struct impl;
+  struct impl *m_pimpl;
 
-  method m_method;
-  std::string_view m_path;
-  std::string_view m_raw_body;
-  std::vector<std::pair<std::string_view, std::string_view>> m_params;
-  std::vector<std::pair<std::string_view, std::string_view>> m_headers;
-
-  struct cookies {
-  public:
-    bool parsed = false;
-    std::vector<std::pair<std::string_view, std::string_view>> m_cookies;
-
-    cookies() = default;
-    ~cookies() = default;
-
-    void parse(std::string_view header);
-    std::optional<std::string_view> get(std::string_view key) const;
-  };
-  std::unique_ptr<cookies> m_cookies = nullptr;
-
-  // middlewares + main handler
-  std::vector<path_handler> m_handlers;
-
-  explicit request(void *remote, std::unique_ptr<char[]> raw) : m_raw(std::move(raw)), m_remote(remote) {};
+  explicit request();
 
   friend struct app;
-  friend struct root_router;
   friend struct http_parser;
+  friend struct root_router;
 };
 
 struct router {

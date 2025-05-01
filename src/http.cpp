@@ -2,12 +2,13 @@
 #include <string_view>
 
 #include "http.hpp"
+#include "req.hpp"
 
 namespace fc {
 
 enum llhttp_errno http_parser::parse(request *req) {
   m_llhttp_instance.data = req;
-  enum llhttp_errno err = llhttp_execute(&m_llhttp_instance, req->m_raw.get(), strlen(req->m_raw.get()));
+  enum llhttp_errno err = llhttp_execute(&m_llhttp_instance, req->m_pimpl->m_raw.get(), strlen(req->m_pimpl->m_raw.get()));
   llhttp_reset(&m_llhttp_instance);
   return err;
 }
@@ -15,22 +16,22 @@ enum llhttp_errno http_parser::parse(request *req) {
 int http_parser::llhttp_on_url(llhttp_t *p, const char *at, size_t len) {
   request *r = (request *)p->data;
   if (len < 1 || at[0] != '/') return HPE_INVALID_URL;
-  r->m_path = std::string_view(at, len);
+  r->m_pimpl->m_path = std::string_view(at, len);
   return HPE_OK;
 }
 
 int http_parser::llhttp_on_method(llhttp_t *p, const char *at, size_t len) {
   request *r = (request *)p->data;
   if (strncasecmp("GET", at, len) == 0) {
-    r->m_method = method::GET;
+    r->m_pimpl->m_method = method::GET;
   } else if (strncasecmp("POST", at, len) == 0) {
-    r->m_method = method::POST;
+    r->m_pimpl->m_method = method::POST;
   } else if (strncasecmp("PUT", at, len) == 0) {
-    r->m_method = method::PUT;
+    r->m_pimpl->m_method = method::PUT;
   } else if (strncasecmp("DELETE", at, len) == 0) {
-    r->m_method = method::DELETE;
+    r->m_pimpl->m_method = method::DELETE;
   } else if (strncasecmp("PATCH", at, len) == 0) {
-    r->m_method = method::PATCH;
+    r->m_pimpl->m_method = method::PATCH;
   } else {
     return HPE_INVALID_METHOD;
   }
@@ -39,19 +40,19 @@ int http_parser::llhttp_on_method(llhttp_t *p, const char *at, size_t len) {
 
 int http_parser::llhttp_on_body(llhttp_t *p, const char *at, size_t len) {
   request *req = (request *)p->data;
-  req->m_raw_body = std::string_view(at, len);
+  req->m_pimpl->m_raw_body = std::string_view(at, len);
   return HPE_OK;
 }
 
 int http_parser::llhttp_on_header_field(llhttp_t *p, const char *at, size_t len) {
   request *req = (request *)p->data;
-  req->m_headers.push_back({std::string_view(at, len), {}});
+  req->m_pimpl->m_headers.push_back({std::string_view(at, len), {}});
   return HPE_OK;
 }
 
 int http_parser::llhttp_on_header_value(llhttp_t *p, const char *at, size_t len) {
   request *req = (request *)p->data;
-  req->m_headers.back().second = std::string_view(at, len);
+  req->m_pimpl->m_headers.back().second = std::string_view(at, len);
   return HPE_OK;
 }
 
