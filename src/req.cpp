@@ -26,13 +26,13 @@ request::~request() {
   if (m_cookies) delete m_cookies;
 }
 
-std::optional<std::string> request::get_param(const std::string &key) const {
-  if (auto it = std::find_if(m_params.begin(), m_params.end(), [key](const std::pair<std::string_view, std::string> &p) { return p.first == key; }); it != m_params.end())
+std::optional<std::string_view> request::get_param(const std::string &key) {
+  if (auto it = std::find_if(m_params.begin(), m_params.end(), [key](const std::pair<std::string_view, std::string_view> &p) { return p.first == key; }); it != m_params.end())
     return it->second;
   return std::nullopt;
 }
 
-std::optional<std::string_view> request::get_header(const std::string &key) const {
+std::optional<std::string_view> request::get_header(const std::string &key) {
   if (auto it = std::find_if(m_headers.begin(), m_headers.end(), [key](const std::pair<std::string_view, std::string_view> &p) { return p.first == key; }); it != m_headers.end())
     return it->second;
   return std::nullopt;

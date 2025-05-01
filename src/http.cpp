@@ -15,6 +15,7 @@ enum llhttp_errno http_parser::parse(request *req) {
 
 int http_parser::llhttp_on_url(llhttp_t *p, const char *at, size_t len) {
   request *r = (request *)p->data;
+  if (len < 1 || at[0] != '/') return HPE_INVALID_URL;
   r->m_path = std::string_view(at, len);
   return HPE_OK;
 }

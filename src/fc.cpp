@@ -1,4 +1,5 @@
 #include <cassert>
+#include <cmath>
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
@@ -63,7 +64,7 @@ public:
   static void on_alloc_req_buf(uv_handle_t *client, size_t size, uv_buf_t *buf);
   static void on_read_req_buf(uv_stream_t *client, long nread, const uv_buf_t *buf);
 
-  void add_route(method, const std::string, path_handler, const std::vector<path_handler> &);
+  void add_route(method, std::string, path_handler, const std::vector<path_handler> &);
 };
 
 struct send_file_ctx {
@@ -131,7 +132,8 @@ void app::set_assets_dir(const std::string dir_path) {
   m_pimpl->m_assets_dir = dir_path;
 }
 
-void app::impl::add_route(method method, const std::string path, path_handler handler, const std::vector<path_handler> &midwares) {
+void app::impl::add_route(method method, std::string path, path_handler handler, const std::vector<path_handler> &midwares) {
+  if (path.length() < 1 || path.at(0) != '/') path.insert(0, "/");
   m_router.add(method, path, handler, midwares);
 }
 

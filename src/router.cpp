@@ -1,5 +1,7 @@
+#include <cstdio>
 #include <cstring>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 #include "include/fc.hpp"
@@ -27,35 +29,42 @@ void router::patch(const std::string path, path_handler handler) {
   m_routes.push_back(route(method::PATCH, path, handler));
 }
 
-// TODO: normalize in place to avoid std::string allocation
-std::string root_router::normalize_path(const std::string_view &input) {
-  bool prevSlash = false;
-  std::string output;
-  output.reserve(input.length());
-  for (auto chr : input) {
-    if (('/' == chr && prevSlash) || std::isspace(chr)) {
+std::string_view root_router::normalize_path(std::string_view in) const {
+  if (in.empty()) return in;
+  char *data = const_cast<char *>(in.data()); // ⚠️ data must be mutable
+  size_t ri = 0, wi = 0;
+  bool pslash = false;
+  while (ri < in.length()) {
+    char ch = data[ri++];
+    if ((ch == '/' && pslash) || std::isspace(static_cast<unsigned char>(ch))) {
       continue;
     }
-    prevSlash = (chr == '/');
-    output.push_back(chr);
+    data[wi++] = ch;
+    pslash = (ch == '/');
   }
-  return output;
+  if (wi > 1 && data[wi - 1] == '/') {
+    --wi;
+  }
+  return std::string_view(data, wi);
 }
 
-// TODO: return vec of string_views to avoid std::string alloc.
-std::vector<std::string> root_router::split_path(const std::string_view &path) {
-  std::vector<std::string> frags;
-  auto normalPath = normalize_path(path);
-  char *frag = std::strtok((char *)normalPath.c_str(), "/");
-  while (frag) {
-    frags.push_back(frag);
-    frag = std::strtok(nullptr, "/");
+std::vector<std::string_view> root_router::split_path(const std::string_view norm_path) const {
+  size_t offset = 1; // skip the leading '/'
+  std::vector<std::string_view> parts;
+  while (offset < norm_path.length()) {
+    size_t next_slash = norm_path.find('/', offset);
+    if (next_slash == std::string_view::npos) {
+      parts.emplace_back(norm_path.substr(offset));
+      break;
+    }
+    parts.emplace_back(norm_path.substr(offset, next_slash - offset));
+    offset = next_slash + 1;
   }
-  return frags;
+  return parts;
 }
 
 void root_router::add(method method, const std::string path, path_handler handler, const std::vector<path_handler> &midwares) {
-  auto path_fragments = split_path(path);
+  auto path_fragments = split_path(normalize_path(path));
   frag *current = &m_root;
 
   for (const auto &frg : path_fragments) {
@@ -72,7 +81,7 @@ void root_router::add(method method, const std::string path, path_handler handle
     while (child) {
       if ((type == frag_type::STATIC && child->m_label == frg) || (type != frag_type::STATIC && child->m_type == type)) {
         if (type == frag_type::DYNAMIC && child->m_label != frg && (child->m_handlers && !child->m_handlers->at((int)method).empty())) {
-          throw std::runtime_error("Conflicting dynamic segment names: " + child->m_label + " vs " + frg);
+          throw std::runtime_error("Conflicting dynamic segment names: " + child->m_label + " vs " + std::string(frg));
         }
         found = true;
         break;
@@ -81,7 +90,7 @@ void root_router::add(method method, const std::string path, path_handler handle
       child = child->m_next;
     }
     if (!found) {
-      frag *newFrag = new frag(type, frag_type::DYNAMIC == type ? frg.substr(1) : frg);
+      frag *newFrag = new frag(type, std::string(frag_type::DYNAMIC == type ? frg.substr(1) : frg));
       if (prev) {
         prev->m_next = newFrag;
       } else {
@@ -91,7 +100,6 @@ void root_router::add(method method, const std::string path, path_handler handle
     }
     current = child;
   }
-  // at this point we know that the current fragment is a leaf node
   if (!current->m_handlers) {
     current->m_handlers = new frag_handlers_t();
   }
@@ -103,9 +111,9 @@ void root_router::add(method method, const std::string path, path_handler handle
 }
 
 bool root_router::match(request &req) const {
-  auto fragments = split_path(req.m_path);
+  auto fragments = split_path(normalize_path(req.m_path));
   const frag *current = &m_root;
-  for (auto &frg : fragments) {
+  for (auto frg : fragments) {
     bool found = false;
     const frag *child = current->m_child;
     while (child && !found) {
@@ -113,7 +121,7 @@ bool root_router::match(request &req) const {
       case frag_type::STATIC: found = frg == child->m_label; break;
       case frag_type::DYNAMIC:
         found = true;
-        req.m_params.push_back({child->m_label, frg});
+        req.m_params.emplace_back(child->m_label, frg);
         break;
       case frag_type::WILDCARD:
         // TODOOO: fill handler & midware
@@ -125,14 +133,10 @@ bool root_router::match(request &req) const {
       }
       child = child->m_next;
     }
-    if (!found) {
-      return false;
-    }
+    if (!found) return false;
   }
   auto handler = current->m_handlers->at(static_cast<int>(req.m_method));
-  if (handler.empty()) {
-    return false;
-  }
+  if (handler.empty()) return false;
   req.m_handlers.insert(req.m_handlers.begin(), handler.begin(), handler.end());
   return true;
 }

@@ -26,7 +26,7 @@ fc::response create(fc::request req) {
 }
 
 fc::response delet(fc::request req) {
-  auto id = (std::stoi(req.get_param("id").value())) - 1;
+  auto id = (std::stoi(std::string(req.get_param("id").value())) - 1);
   if (id >= users.size() || users.at(id).m_is_deleted) {
     return fc::response::ok(fc::status::NOT_FOUND);
   }
@@ -44,7 +44,7 @@ fc::response find_many(fc::request req) {
 }
 
 fc::response find_by_id(fc::request req) {
-  auto id = (std::stoi(req.get_param("id").value())) - 1;
+  auto id = (std::stoi(std::string(req.get_param("id").value())) - 1);
   if (id >= users.size() || users.at(id).m_is_deleted) {
     return fc::response::ok(fc::status::NOT_FOUND);
   }

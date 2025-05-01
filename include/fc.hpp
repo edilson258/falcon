@@ -146,8 +146,8 @@ public:
   nlohmann::json json();
   method get_method() const { return m_method; }
   const std::string_view &get_path() const { return m_path; }
-  std::optional<std::string> get_param(const std::string &) const;
-  std::optional<std::string_view> get_header(const std::string &) const;
+  std::optional<std::string_view> get_param(const std::string &);
+  std::optional<std::string_view> get_header(const std::string &);
   std::optional<std::string_view> get_cookie(const std::string &);
   response next();
 
@@ -158,7 +158,7 @@ private:
   method m_method;
   std::string_view m_path;
   std::string_view m_raw_body;
-  std::vector<std::pair<std::string_view, std::string>> m_params;
+  std::vector<std::pair<std::string_view, std::string_view>> m_params;
   std::vector<std::pair<std::string_view, std::string_view>> m_headers;
   struct cookies;
   cookies *m_cookies = nullptr;
