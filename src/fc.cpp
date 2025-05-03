@@ -181,12 +181,8 @@ void app::impl::on_read_req_buf(uv_stream_t *client, long nread, const uv_buf_t 
     uv_close((uv_handle_t *)client, app::impl::on_close_conn);
   } else {
     auto this_ = (app::impl *)client->loop->data;
-
     std::unique_ptr<char[]> raw(buf->base);
-    auto req = request();
-    req.m_pimpl->m_remote = client;
-    req.m_pimpl->m_raw = std::move(raw);
-
+    request req = request(new request::impl(client, std::move(raw)));
     this_->parse_http_request(std::move(req));
   }
 }
@@ -197,12 +193,13 @@ void app::impl::parse_http_request(request req) {
     debug::error("Fail to parse http request, %s", llhttp_errno_name(err));
     return send_response(std::move(req), response::ok(status::BAD_REQUEST));
   }
-  match_request_to_handler(std::move(req));
+  return match_request_to_handler(std::move(req));
 }
 
 void app::impl::match_request_to_handler(request req) {
   if (m_router.match(req)) {
-    return send_response(std::move(req), req.next());
+    response res = req.next();
+    return send_response(std::move(req), std::move(res));
   }
 
   if (method::GET != req.m_pimpl->m_method) {
@@ -212,7 +209,7 @@ void app::impl::match_request_to_handler(request req) {
   auto path = join_paths(m_assets_dir, std::string(req.m_pimpl->m_path));
   auto res = response(status::OK, response::file_info(path.string()));
   res.set_header("Content-Type", contype_from_ext(path.extension().string()));
-  send_response_file(std::move(req), std::move(res));
+  return send_response_file(std::move(req), std::move(res));
 }
 
 void app::impl::send_response_head(request &req, response &res) {
@@ -275,7 +272,8 @@ void app::impl::send_response_file(request req, response res) {
 
   uv_fs_t *open_req = new uv_fs_t;
   const char *path = fi.m_path.c_str();
-  open_req->data = new send_file_ctx(-1, req.m_pimpl->m_remote, std::move(req), std::move(res));
+  uv_stream_t *remote = req.m_pimpl->m_remote;
+  open_req->data = new send_file_ctx(-1, remote, std::move(req), std::move(res));
   uv_fs_open(uv_default_loop(), open_req, path, O_RDONLY, 0, app::impl::on_open_file);
 }
 

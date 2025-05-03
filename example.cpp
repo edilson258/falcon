@@ -18,14 +18,14 @@ public:
 
 std::vector<user_schema> users;
 
-fc::response create(fc::request req) {
+fc::response create(fc::request &req) {
   auto body = req.json();
   user_schema user(body["email"], body["password"]);
   users.push_back(user);
   return fc::response::ok(fc::status::CREATED);
 }
 
-fc::response delet(fc::request req) {
+fc::response delet(fc::request &req) {
   auto id = (std::stoi(std::string(req.get_param("id").value())) - 1);
   if (id >= users.size() || users.at(id).m_is_deleted) {
     return fc::response::ok(fc::status::NOT_FOUND);
@@ -34,7 +34,7 @@ fc::response delet(fc::request req) {
   return fc::response::ok(fc::status::NO_CONTENT);
 }
 
-fc::response find_many(fc::request req) {
+fc::response find_many(fc::request &req) {
   nlohmann::json json = nlohmann::json::object();
   for (user_schema &u : users) {
     if (u.m_is_deleted) continue;
@@ -43,7 +43,7 @@ fc::response find_many(fc::request req) {
   return fc::response::json(json);
 }
 
-fc::response find_by_id(fc::request req) {
+fc::response find_by_id(fc::request &req) {
   auto id = (std::stoi(std::string(req.get_param("id").value())) - 1);
   if (id >= users.size() || users.at(id).m_is_deleted) {
     return fc::response::ok(fc::status::NOT_FOUND);
@@ -51,8 +51,8 @@ fc::response find_by_id(fc::request req) {
   return fc::response::json({{"email", users.at(id).m_email}, {"password", users.at(id).m_password}});
 }
 
-fc::response auth_middleware(fc::request);
-fc::response logger_middleware(fc::request);
+fc::response auth_middleware(fc::request &);
+fc::response logger_middleware(fc::request &);
 
 int main(int argc, char *argv[]) {
   // mocked users
@@ -74,7 +74,7 @@ int main(int argc, char *argv[]) {
   router.get("/:id", find_by_id);
   router.delet("/:id", delet);
 
-  app.get("/", [](fc::request req) {
+  app.get("/", [](fc::request &req) {
     return fc::response::render("index.html");
   });
 
@@ -82,12 +82,12 @@ int main(int argc, char *argv[]) {
   app.listen(":8000");
 }
 
-fc::response logger_middleware(fc::request req) {
+fc::response logger_middleware(fc::request &req) {
   // log something here
   return req.next();
 }
 
-fc::response auth_middleware(fc::request req) {
+fc::response auth_middleware(fc::request &req) {
   static std::string prefix = "Bearer ";
   static std::string token = "uGhTVjLwDb0R/s4xR3mwX/AdymqNbV9htkcRiulIw3E=";
   if (auto authToken = req.get_header("Authorization"); authToken.has_value()) {

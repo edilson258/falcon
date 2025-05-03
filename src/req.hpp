@@ -36,7 +36,8 @@ public:
   // middlewares + main handler
   std::vector<path_handler> m_handlers;
 
-  impl() = default;
+  impl(uv_stream_t *remote, std::unique_ptr<char[]> raw) : m_remote(remote), m_raw(std::move(raw)) {};
+  ~impl() = default;
 };
 
 } // namespace fc

@@ -8,21 +8,24 @@
 
 #include "external/nlohmann/json.hpp"
 #include "include/fc.hpp"
-#include "src/req.hpp"
+#include "req.hpp"
 
 namespace fc {
 
-request::request() {
-  m_pimpl = new impl();
-};
+request::request(request &&other) noexcept {
+  this->m_pimpl = other.m_pimpl;
+  other.m_pimpl = nullptr;
+}
+
+request::~request() { delete m_pimpl; };
 
 response request::next() {
-  if (m_pimpl->m_handlers.size() <= 0) {
+  if (m_pimpl->m_handlers.empty()) {
     throw std::runtime_error("No next function");
   }
-  auto next = m_pimpl->m_handlers.back();
+  auto next_handler = m_pimpl->m_handlers.back();
   m_pimpl->m_handlers.pop_back();
-  return next(std::move(*this));
+  return next_handler(*this);
 }
 
 std::optional<std::string_view> request::get_param(const std::string &key) {

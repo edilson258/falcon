@@ -104,7 +104,7 @@ enum class status {
 struct request;
 struct response;
 
-using path_handler = std::function<response(request)>;
+using path_handler = std::function<response(request &)>;
 
 struct response {
 public:
@@ -150,16 +150,17 @@ public:
   std::optional<std::string_view> get_header(const std::string &);
   std::optional<std::string_view> get_cookie(const std::string &);
 
-  request(request &&other) noexcept = default;
+  ~request();
   request(const request &other) = delete;
   request &operator=(const request &other) = delete;
+  request(request &&other) noexcept;
   request &operator=(request &&other) = delete;
 
 private:
   struct impl;
-  struct impl *m_pimpl;
+  impl *m_pimpl;
 
-  explicit request();
+  request(struct impl *impl) : m_pimpl(impl) {}
 
   friend struct app;
   friend struct http_parser;
