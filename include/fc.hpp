@@ -98,6 +98,12 @@ public:
   void set_content_type(std::string);
   void set_header(std::string, std::string);
 
+  ~response();
+  response(const response &other) = delete;
+  response &operator=(const response &other) = delete;
+  response(response &&other) noexcept;
+  response &operator=(response &&other) noexcept;
+
 private:
   struct impl;
   impl *m_pimpl;

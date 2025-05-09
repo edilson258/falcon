@@ -7,6 +7,21 @@
 
 namespace fc {
 
+response::~response() {
+  delete m_pimpl;
+}
+
+response::response(response &&other) noexcept {
+  m_pimpl = other.m_pimpl;
+  other.m_pimpl = nullptr;
+}
+
+response &response::operator=(response &&other) noexcept {
+  m_pimpl = other.m_pimpl;
+  other.m_pimpl = nullptr;
+  return *this;
+}
+
 response response::ok(status stats) {
   auto res = response(new response::impl(stats, status_to_string(stats)));
   res.set_content_type("text/plain");
