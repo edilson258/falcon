@@ -18,20 +18,15 @@ enum class method {
   DELETE = 3,
   PATCH = 4,
 
-  // used internally to keep track of methods len
-  COUNT,
+  // for internal use only and must be the last
+  __COUNT__,
 };
 
 enum class status {
-  // 1xx: Informational
-  //
   CONTINUE = 100,
   SWITCHING_PROTOCOLS = 101,
-  PROCESSING = 102,  // WebDAV
-  EARLY_HINTS = 103, // HTTP/1.1 preload
-
-  // 2xx: Success
-  //
+  PROCESSING = 102,
+  EARLY_HINTS = 103,
   OK = 200,
   CREATED = 201,
   ACCEPTED = 202,
@@ -39,12 +34,9 @@ enum class status {
   NO_CONTENT = 204,
   RESET_CONTENT = 205,
   PARTIAL_CONTENT = 206,
-  MULTI_STATUS = 207,     // WebDAV
-  ALREADY_REPORTED = 208, // WebDAV
-  IM_USED = 226,          // RFC 3229
-
-  // 3xx: Redirection
-  //
+  MULTI_STATUS = 207,
+  ALREADY_REPORTED = 208,
+  IM_USED = 226,
   MULTIPLE_CHOICES = 300,
   MOVED_PERMANENTLY = 301,
   FOUND = 302,
@@ -53,9 +45,6 @@ enum class status {
   USE_PROXY = 305,
   TEMPORARY_REDIRECT = 307,
   PERMANENT_REDIRECT = 308,
-
-  // 4xx: Client Errors
-  //
   BAD_REQUEST = 400,
   UNAUTHORIZED = 401,
   PAYMENT_REQUIRED = 402,
@@ -74,20 +63,17 @@ enum class status {
   UNSUPPORTED_MEDIA_TYPE = 415,
   RANGE_NOT_SATISFIABLE = 416,
   EXPECTATION_FAILED = 417,
-  IM_A_TEAPOT = 418, // RFC 2324 / April Fools :P
+  IM_A_TEAPOT = 418,
   MISDIRECTED_REQUEST = 421,
-  UNPROCESSABLE_ENTITY = 422, // WebDAV
-  LOCKED = 423,               // WebDAV
-  FAILED_DEPENDENCY = 424,    // WebDAV
+  UNPROCESSABLE_ENTITY = 422,
+  LOCKED = 423,
+  FAILED_DEPENDENCY = 424,
   TOO_EARLY = 425,
   UPGRADE_REQUIRED = 426,
   PRECONDITION_REQUIRED = 428,
   TOO_MANY_REQUESTS = 429,
   REQUEST_HEADER_FIELDS_TOO_LARGE = 431,
   UNAVAILABLE_FOR_LEGAL_REASONS = 451,
-
-  // 5xx: Server Errors
-  //
   INTERNAL_SERVER_ERROR = 500,
   NOT_IMPLEMENTED = 501,
   BAD_GATEWAY = 502,
@@ -95,16 +81,11 @@ enum class status {
   GATEWAY_TIMEOUT = 504,
   HTTP_VERSION_NOT_SUPPORTED = 505,
   VARIANT_ALSO_NEGOTIATES = 506,
-  INSUFFICIENT_STORAGE = 507, // WebDAV
-  LOOP_DETECTED = 508,        // WebDAV
+  INSUFFICIENT_STORAGE = 507,
+  LOOP_DETECTED = 508,
   NOT_EXTENDED = 510,
   NETWORK_AUTHENTICATION_REQUIRED = 511
 };
-
-struct request;
-struct response;
-
-using path_handler = std::function<response(request &)>;
 
 struct response {
 public:
@@ -113,27 +94,15 @@ public:
   static response render(std::string path, status stats = status::OK);
 
   void set_status(status);
-  status get_status() const { return m_status; }
+  status get_status() const;
   void set_content_type(std::string);
   void set_header(std::string, std::string);
 
 private:
-  status m_status;
-  std::vector<std::pair<std::string, std::string>> m_headers;
-  std::string m_body;
+  struct impl;
+  impl *m_pimpl;
 
-  bool m_is_file;
-  struct file_info {
-    bool m_is_view;
-    std::string m_path;
-
-    file_info() = default;
-    file_info(std::string path, bool is_view = false) : m_is_view(is_view), m_path(std::move(path)) {};
-  };
-  file_info m_file_info;
-
-  response(status stats, file_info fi) : m_status(stats), m_is_file(true), m_file_info(std::move(fi)) {}
-  response(status stats, std::string body) : m_status(stats), m_body(body), m_is_file(false) {}
+  response(struct impl *pimpl) : m_pimpl(pimpl) {};
 
   friend struct app;
 };
@@ -167,6 +136,8 @@ private:
   friend struct root_router;
 };
 
+using path_handler = std::function<response(request &)>;
+
 struct router {
 public:
   void get(const std::string, path_handler);
@@ -175,7 +146,7 @@ public:
   void delet(const std::string, path_handler);
   void patch(const std::string, path_handler);
 
-  void use(path_handler midware) { m_midwares.insert(m_midwares.begin(), midware); };
+  void use(path_handler middleware) { m_middlewares.insert(m_middlewares.begin(), middleware); };
 
   router(std::string base = "") : m_base(base), m_routes() {};
 
@@ -191,7 +162,7 @@ private:
 
   std::string m_base;
   std::vector<route> m_routes;
-  std::vector<path_handler> m_midwares;
+  std::vector<path_handler> m_middlewares;
 
   friend struct app;
 };

@@ -13,7 +13,7 @@ enum class frag_type {
   WILDCARD = 3,
 };
 
-using frag_handlers_t = std::array<std::vector<path_handler>, static_cast<int>(method::COUNT)>;
+using frag_handlers_t = std::array<std::vector<path_handler>, static_cast<int>(method::__COUNT__)>;
 
 struct frag {
 public:

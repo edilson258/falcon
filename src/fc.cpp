@@ -1,19 +1,3 @@
-#include <cassert>
-#include <cmath>
-#include <cstddef>
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
-#include <fcntl.h>
-#include <filesystem>
-#include <memory>
-#include <string>
-#include <sys/param.h>
-#include <utility>
-#include <uv.h>
-#include <uv/unix.h>
-#include <vector>
-
 #include "external/llhttp/llhttp.h"
 
 #include "const.hpp"
@@ -21,6 +5,7 @@
 #include "http.hpp"
 #include "include/fc.hpp"
 #include "req.hpp"
+#include "res.hpp"
 #include "router.hpp"
 #include "signals.h"
 #include "utils.hpp"
@@ -123,7 +108,7 @@ void app::patch(const std::string path, path_handler handler) {
 
 void app::use(const router &router) {
   for (auto &r : router.m_routes) {
-    m_pimpl->add_route(r.m_method, router.m_base + r.m_path, r.m_handler, router.m_midwares);
+    m_pimpl->add_route(r.m_method, router.m_base + r.m_path, r.m_handler, router.m_middlewares);
   }
 }
 
@@ -207,7 +192,7 @@ void app::impl::match_request_to_handler(request req) {
   }
 
   auto path = join_paths(m_assets_dir, std::string(req.m_pimpl->m_path));
-  auto res = response(status::OK, response::file_info(path.string()));
+  auto res = response(new response::impl(status::OK, response_file(path)));
   res.set_header("Content-Type", contype_from_ext(path.extension().string()));
   return send_response_file(std::move(req), std::move(res));
 }
@@ -215,11 +200,11 @@ void app::impl::match_request_to_handler(request req) {
 void app::impl::send_response_head(request &req, response &res) {
   size_t headers_len = 0;
   size_t headers_offs = 0;
-  for (const auto &h : res.m_headers) {
+  for (const auto &h : res.m_pimpl->m_headers) {
     headers_len += h.first.length() + h.second.length() + 4;
   }
   char headers[headers_len + 1];
-  for (const auto &h : res.m_headers) {
+  for (const auto &h : res.m_pimpl->m_headers) {
     std::memcpy(headers + headers_offs, h.first.data(), h.first.length());
     headers_offs += h.first.length();
     std::memcpy(headers + headers_offs, ": ", 2);
@@ -231,10 +216,10 @@ void app::impl::send_response_head(request &req, response &res) {
   }
   headers[headers_offs] = '\0';
 
-  auto statstr = status_to_string(res.m_status);
-  auto header_len = snprintf(nullptr, 0, http_header_cfmt, (int)res.m_status, statstr, headers);
+  auto statstr = status_to_string(res.m_pimpl->m_status);
+  auto header_len = snprintf(nullptr, 0, http_header_cfmt, (int)res.m_pimpl->m_status, statstr, headers);
   auto header_buf = new char[header_len + 1];
-  snprintf(header_buf, header_len + 1, http_header_cfmt, (int)res.m_status, statstr, headers);
+  snprintf(header_buf, header_len + 1, http_header_cfmt, (int)res.m_pimpl->m_status, statstr, headers);
 
   uv_buf_t write_buf = uv_buf_init(header_buf, header_len);
   uv_write_t *write_req = new uv_write_t;
@@ -243,9 +228,9 @@ void app::impl::send_response_head(request &req, response &res) {
 }
 
 void app::impl::send_response_body(request req, response res) {
-  auto content_len = res.m_body.length();
+  auto content_len = res.m_pimpl->m_body.length();
   auto content = new char[content_len + 1];
-  std::memcpy(content, res.m_body.data(), content_len);
+  std::memcpy(content, res.m_pimpl->m_body.data(), content_len);
   content[content_len] = '\0';
 
   auto uv_buf = uv_buf_init(content, content_len);
@@ -255,23 +240,23 @@ void app::impl::send_response_body(request req, response res) {
 };
 
 void app::impl::send_response(request req, response res) {
-  if (res.m_is_file) {
+  if (res.m_pimpl->m_isfile) {
     return send_response_file(std::move(req), std::move(res));
   }
-  res.set_header("Content-Len", std::to_string(res.m_body.length()));
+  res.set_header("Content-Len", std::to_string(res.m_pimpl->m_body.length()));
   app::impl::send_response_head(req, res);
   app::impl::send_response_body(std::move(req), std::move(res));
 }
 
 void app::impl::send_response_file(request req, response res) {
-  response::file_info &fi = res.m_file_info;
+  response_file &rf = res.m_pimpl->m_file;
 
-  if (fi.m_is_view) {
-    fi.m_path = join_paths(m_views_dir, fi.m_path).string();
+  if (rf.m_isview) {
+    rf.m_path = join_paths(m_views_dir, rf.m_path).string();
   }
 
   uv_fs_t *open_req = new uv_fs_t;
-  const char *path = fi.m_path.c_str();
+  const char *path = rf.m_path.c_str();
   uv_stream_t *remote = req.m_pimpl->m_remote;
   open_req->data = new send_file_ctx(-1, remote, std::move(req), std::move(res));
   uv_fs_open(uv_default_loop(), open_req, path, O_RDONLY, 0, app::impl::on_open_file);
@@ -279,16 +264,16 @@ void app::impl::send_response_file(request req, response res) {
 
 void app::impl::on_open_file(uv_fs_t *open_req) {
   auto ctx = (send_file_ctx *)open_req->data;
-  response::file_info &fi = ctx->m_res.value().m_file_info;
+  response_file &rf = ctx->m_res.value().m_pimpl->m_file;
 
   if (open_req->result < 0) {
     debug::error("Fail to open file: %s, %s", open_req->path, uv_strerror(open_req->result));
 
     response res = response::ok(status::NOT_FOUND);
-    if (fi.m_is_view) {
+    if (rf.m_isview) {
       res = response::ok(status::INTERNAL_SERVER_ERROR);
     }
-    res.set_header("Content-Len", std::to_string(res.m_body.length()));
+    res.set_header("Content-Len", std::to_string(res.m_pimpl->m_body.length()));
     app::impl::send_response_head(ctx->m_req.value(), res);
     app::impl::send_response_body(std::move(ctx->m_req.value()), std::move(res));
 
