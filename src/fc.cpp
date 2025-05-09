@@ -107,8 +107,8 @@ void app::patch(const std::string path, path_handler handler) {
 }
 
 void app::use(const router &router) {
-  for (auto &r : router.m_routes) {
-    m_pimpl->add_route(r.m_method, router.m_base + r.m_path, r.m_handler, router.m_middlewares);
+  for (auto &r : router.m_pimpl->m_routes) {
+    m_pimpl->add_route(r.m_method, router.m_pimpl->m_base + r.m_path, r.m_handler, router.m_pimpl->m_middlewares);
   }
 }
 

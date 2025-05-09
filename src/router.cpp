@@ -10,24 +10,32 @@
 
 namespace fc {
 
+router::router(std::string base) : m_pimpl(new impl(std::move(base))) {};
+
+router::~router() { delete m_pimpl; }
+
 void router::get(const std::string path, path_handler handler) {
-  m_routes.push_back(route(method::GET, path, handler));
+  m_pimpl->m_routes.push_back(route(method::GET, path, handler));
 }
 
 void router::post(const std::string path, path_handler handler) {
-  m_routes.push_back(route(method::POST, path, handler));
+  m_pimpl->m_routes.push_back(route(method::POST, path, handler));
 }
 
 void router::put(const std::string path, path_handler handler) {
-  m_routes.push_back(route(method::PUT, path, handler));
+  m_pimpl->m_routes.push_back(route(method::PUT, path, handler));
 }
 
 void router::delet(const std::string path, path_handler handler) {
-  m_routes.push_back(route(method::DELETE, path, handler));
+  m_pimpl->m_routes.push_back(route(method::DELETE, path, handler));
 }
 
 void router::patch(const std::string path, path_handler handler) {
-  m_routes.push_back(route(method::PATCH, path, handler));
+  m_pimpl->m_routes.push_back(route(method::PATCH, path, handler));
+}
+
+void router::use(path_handler middleware) {
+  m_pimpl->m_middlewares.insert(m_pimpl->m_middlewares.begin(), middleware);
 }
 
 std::string_view root_router::normalize_path(std::string_view in) const {

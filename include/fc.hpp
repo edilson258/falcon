@@ -5,7 +5,6 @@
 #include <string>
 #include <string_view>
 #include <sys/stat.h>
-#include <vector>
 
 #include "external/nlohmann/json.hpp"
 
@@ -152,23 +151,19 @@ public:
   void delet(const std::string, path_handler);
   void patch(const std::string, path_handler);
 
-  void use(path_handler middleware) { m_middlewares.insert(m_middlewares.begin(), middleware); };
+  router(std::string base);
 
-  router(std::string base = "") : m_base(base), m_routes() {};
+  void use(path_handler middleware);
+
+  ~router();
+  router(const router &other) = delete;
+  router &operator=(const router &other) = delete;
+  router(router &&other) noexcept;
+  router &operator=(router &&other) = delete;
 
 private:
-  struct route {
-  public:
-    method m_method;
-    std::string m_path;
-    path_handler m_handler;
-
-    route(method m, std::string path, path_handler handler) : m_method(m), m_path(path), m_handler(handler) {};
-  };
-
-  std::string m_base;
-  std::vector<route> m_routes;
-  std::vector<path_handler> m_middlewares;
+  struct impl;
+  impl *m_pimpl;
 
   friend struct app;
 };
