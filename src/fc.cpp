@@ -1,9 +1,8 @@
-#include "external/llhttp/llhttp.h"
-
+#include "include/fc.hpp"
 #include "const.hpp"
 #include "debug.hpp"
+#include "external/llhttp/llhttp.h"
 #include "http.hpp"
-#include "include/fc.hpp"
 #include "req.hpp"
 #include "res.hpp"
 #include "router.hpp"
@@ -155,6 +154,7 @@ void app::impl::on_connection(uv_stream_t *host, int status) {
 void app::impl::on_alloc_req_buf(uv_handle_t *client, size_t len, uv_buf_t *buf) {
   buf->len = len;
   buf->base = new char[len];
+  std::memset(buf->base, 0, len);
 }
 
 void app::impl::on_read_req_buf(uv_stream_t *client, long nread, const uv_buf_t *buf) {
@@ -301,9 +301,9 @@ void app::impl::on_read_file_chunk(uv_fs_t *read_req) {
   auto *ctx = (send_file_ctx *)read_req->data;
 
   if (read_req->result > 0) {
-    size_t chunk_len = snprintf(nullptr, 0, "%x\r\n%s\r\n", (unsigned int)read_req->result, read_req->bufs[0].base);
+    size_t chunk_len = snprintf(nullptr, 0, "%x\r\n%s\r\n", (unsigned int)read_req->result, ctx->m_chunk);
     char *chunk_buf = new char[chunk_len + 1];
-    snprintf(chunk_buf, chunk_len + 1, "%x\r\n%s\r\n", (unsigned int)read_req->result, read_req->bufs[0].base);
+    snprintf(chunk_buf, chunk_len + 1, "%x\r\n%s\r\n", (unsigned int)read_req->result, ctx->m_chunk);
 
     uv_buf_t write_buf = uv_buf_init(chunk_buf, chunk_len);
     uv_write_t *write_req = new uv_write_t;
@@ -312,7 +312,11 @@ void app::impl::on_read_file_chunk(uv_fs_t *read_req) {
 
     // read next chunk
     ctx->reset_chunk();
-    uv_fs_read(uv_default_loop(), read_req, ctx->m_file_fd, read_req->bufs, 1, -1, app::impl::on_read_file_chunk);
+
+    uv_fs_t *next_read_req = new uv_fs_t;
+    next_read_req->data = ctx;
+    uv_buf_t next_read_buf = uv_buf_init(ctx->m_chunk, sizeof(ctx->m_chunk));
+    uv_fs_read(uv_default_loop(), next_read_req, ctx->m_file_fd, &next_read_buf, 1, -1, app::impl::on_read_file_chunk);
   } else {
     if (read_req->result < 0) {
       debug::error("Fail to read file chunk, %s", uv_strerror(read_req->result));
@@ -325,8 +329,8 @@ void app::impl::on_read_file_chunk(uv_fs_t *read_req) {
     uv_write(write_req, ctx->m_remote, &last_chunk_buf, 1, app::impl::on_write_and_close);
 
     delete ctx;
-    delete read_req;
   }
+  delete read_req;
 }
 
 void app::impl::on_write_buf(uv_write_t *req, int status) {
