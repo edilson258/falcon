@@ -54,8 +54,8 @@ public:
   void add(method method, const std::string, path_handler, const std::vector<path_handler> &);
   bool match(request &) const;
 
-  std::string_view normalize_path(std::string_view) const;
-  std::vector<std::string_view> split_path(const std::string_view) const;
+  static std::string_view normalize_path(std::string_view);
+  static std::vector<std::string_view> split_path(const std::string_view);
 };
 
 } // namespace fc

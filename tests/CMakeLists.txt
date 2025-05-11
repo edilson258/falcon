@@ -1,14 +1,25 @@
-enable_testing()
+include(FetchContent)
+FetchContent_Declare(
+  googletest
+  URL https://github.com/google/googletest/archive/03597a01ee50ed33e9dfd640b249b4be3799d395.zip
+)
+# For Windows: Prevent overriding the parent project's compiler/linker settings
+set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(googletest)
 
-file(GLOB TestSources "*.c")
-foreach(TestSource ${TestSources})
+include(GoogleTest)
+
+file(GLOB tests_sources "test_*.cpp")
+foreach(test_source ${tests_sources})
   # extract filename without extension and use it as test executable's name
-  get_filename_component(TestFileName ${TestSource} NAME_WE)
-  add_executable(${TestFileName} ${TestSource} ${CMAKE_SOURCE_DIR}/tests/unity/src/unity.c)
-
-  # link against cthings framework
-  target_link_libraries(${TestFileName} PRIVATE falcon uv ${llhttp_parser})
-  target_include_directories(${TestFileName} PUBLIC ${CMAKE_SOURCE_DIR}/include  ${CMAKE_SOURCE_DIR}/tests/unity/src)
-
-  add_test(NAME ${TestFileName} COMMAND ${TestFileName})
+  get_filename_component(test_name ${test_source} NAME_WE)
+  add_executable(${test_name} ${test_source})
+  target_include_directories(${test_name} PRIVATE ${CMAKE_SOURCE_DIR}/)
+  target_link_libraries(
+    ${test_name}
+    falcon
+    GTest::gtest_main
+  )
+  gtest_discover_tests(${test_name})
+  add_test(NAME ${test_name} COMMAND ${test_name})
 endforeach()

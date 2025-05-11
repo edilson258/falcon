@@ -46,5 +46,29 @@
   "command": "/usr/bin/c++  -I/home/edilson/software/falcon -g -std=gnu++20 -o CMakeFiles/example.dir/example.cpp.o -c /home/edilson/software/falcon/example.cpp",
   "file": "/home/edilson/software/falcon/example.cpp",
   "output": "CMakeFiles/example.dir/example.cpp.o"
+},
+{
+  "directory": "/home/edilson/software/falcon/build/_deps/googletest-build/googlemock",
+  "command": "/usr/bin/c++  -I/home/edilson/software/falcon/build/_deps/googletest-src/googlemock/include -I/home/edilson/software/falcon/build/_deps/googletest-src/googlemock -isystem /home/edilson/software/falcon/build/_deps/googletest-src/googletest/include -isystem /home/edilson/software/falcon/build/_deps/googletest-src/googletest -g -std=c++20 -Wall -Wshadow -Wno-error=dangling-else -DGTEST_HAS_PTHREAD=1 -fexceptions -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -o CMakeFiles/gmock.dir/src/gmock-all.cc.o -c /home/edilson/software/falcon/build/_deps/googletest-src/googlemock/src/gmock-all.cc",
+  "file": "/home/edilson/software/falcon/build/_deps/googletest-src/googlemock/src/gmock-all.cc",
+  "output": "_deps/googletest-build/googlemock/CMakeFiles/gmock.dir/src/gmock-all.cc.o"
+},
+{
+  "directory": "/home/edilson/software/falcon/build/_deps/googletest-build/googlemock",
+  "command": "/usr/bin/c++  -isystem /home/edilson/software/falcon/build/_deps/googletest-src/googlemock/include -isystem /home/edilson/software/falcon/build/_deps/googletest-src/googlemock -isystem /home/edilson/software/falcon/build/_deps/googletest-src/googletest/include -isystem /home/edilson/software/falcon/build/_deps/googletest-src/googletest -g -std=c++20 -Wall -Wshadow -Wno-error=dangling-else -DGTEST_HAS_PTHREAD=1 -fexceptions -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -o CMakeFiles/gmock_main.dir/src/gmock_main.cc.o -c /home/edilson/software/falcon/build/_deps/googletest-src/googlemock/src/gmock_main.cc",
+  "file": "/home/edilson/software/falcon/build/_deps/googletest-src/googlemock/src/gmock_main.cc",
+  "output": "_deps/googletest-build/googlemock/CMakeFiles/gmock_main.dir/src/gmock_main.cc.o"
+},
+{
+  "directory": "/home/edilson/software/falcon/build/_deps/googletest-build/googletest",
+  "command": "/usr/bin/c++  -I/home/edilson/software/falcon/build/_deps/googletest-src/googletest/include -I/home/edilson/software/falcon/build/_deps/googletest-src/googletest -g -std=c++20 -Wall -Wshadow -Wno-error=dangling-else -DGTEST_HAS_PTHREAD=1 -fexceptions -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -o CMakeFiles/gtest.dir/src/gtest-all.cc.o -c /home/edilson/software/falcon/build/_deps/googletest-src/googletest/src/gtest-all.cc",
+  "file": "/home/edilson/software/falcon/build/_deps/googletest-src/googletest/src/gtest-all.cc",
+  "output": "_deps/googletest-build/googletest/CMakeFiles/gtest.dir/src/gtest-all.cc.o"
+},
+{
+  "directory": "/home/edilson/software/falcon/build/_deps/googletest-build/googletest",
+  "command": "/usr/bin/c++  -isystem /home/edilson/software/falcon/build/_deps/googletest-src/googletest/include -isystem /home/edilson/software/falcon/build/_deps/googletest-src/googletest -g -std=c++20 -Wall -Wshadow -Wno-error=dangling-else -DGTEST_HAS_PTHREAD=1 -fexceptions -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -o CMakeFiles/gtest_main.dir/src/gtest_main.cc.o -c /home/edilson/software/falcon/build/_deps/googletest-src/googletest/src/gtest_main.cc",
+  "file": "/home/edilson/software/falcon/build/_deps/googletest-src/googletest/src/gtest_main.cc",
+  "output": "_deps/googletest-build/googletest/CMakeFiles/gtest_main.dir/src/gtest_main.cc.o"
 }
 ]

@@ -38,7 +38,7 @@ void router::use(path_handler middleware) {
   m_pimpl->m_middlewares.insert(m_pimpl->m_middlewares.begin(), middleware);
 }
 
-std::string_view root_router::normalize_path(std::string_view in) const {
+std::string_view root_router::normalize_path(std::string_view in) {
   if (in.empty()) return in;
   char *data = const_cast<char *>(in.data()); // ⚠️ data must be mutable
   size_t ri = 0, wi = 0;
@@ -57,7 +57,7 @@ std::string_view root_router::normalize_path(std::string_view in) const {
   return std::string_view(data, wi);
 }
 
-std::vector<std::string_view> root_router::split_path(const std::string_view norm_path) const {
+std::vector<std::string_view> root_router::split_path(const std::string_view norm_path) {
   size_t offset = 1; // skip the leading '/'
   std::vector<std::string_view> parts;
   while (offset < norm_path.length()) {

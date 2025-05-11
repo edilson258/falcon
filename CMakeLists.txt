@@ -15,10 +15,13 @@ find_library(
   NAMES llhttp
   PATHS "${CMAKE_SOURCE_DIR}/external/llhttp")
 
-file(GLOB_RECURSE FALCON_SOURCES "${CMAKE_SOURCE_DIR}/src/*.cpp")
-add_library(falcon STATIC ${FALCON_SOURCES})
+file(GLOB_RECURSE falcon_sources "${CMAKE_SOURCE_DIR}/src/*.cpp")
+add_library(falcon STATIC ${falcon_sources})
 target_include_directories(falcon PRIVATE ${CMAKE_SOURCE_DIR}/)
 
 add_executable(example example.cpp)
 target_link_libraries(example PRIVATE falcon uv ${llhttp_parser})
 target_include_directories(example PRIVATE ${CMAKE_SOURCE_DIR}/)
+
+enable_testing()
+add_subdirectory(tests)
