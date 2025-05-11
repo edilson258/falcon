@@ -11,7 +11,6 @@ include(GoogleTest)
 
 file(GLOB tests_sources "test_*.cpp")
 foreach(test_source ${tests_sources})
-  # extract filename without extension and use it as test executable's name
   get_filename_component(test_name ${test_source} NAME_WE)
   add_executable(${test_name} ${test_source})
   target_include_directories(${test_name} PRIVATE ${CMAKE_SOURCE_DIR}/)
