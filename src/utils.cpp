@@ -7,6 +7,7 @@
 #include <tuple>
 
 #include "const.hpp"
+#include "include/fc.hpp"
 #include "utils.hpp"
 
 std::tuple<std::string, std::string> split_address(const std::string &input) {
@@ -29,4 +30,15 @@ std::string contype_from_ext(const std::string &ext) {
   auto it = CONTENT_TYPES.find(ext);
   if (it != CONTENT_TYPES.end()) return it->second;
   return "application/octet-stream";
+}
+
+std::string fc::method_to_string(fc::method method_) {
+  switch (method_) {
+  case fc::method::GET: return "GET";
+  case fc::method::POST: return "POST";
+  case fc::method::PUT: return "PUT";
+  case fc::method::PATCH: return "PATCH";
+  case fc::method::DELETE: return "DELETE";
+  default: return "Unknown Http Method";
+  }
 }
