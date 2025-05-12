@@ -22,6 +22,10 @@ response &response::operator=(response &&other) noexcept {
   return *this;
 }
 
+status response::get_status() const {
+  return m_pimpl->m_status;
+}
+
 response response::ok(status stats) {
   auto res = response(new response::impl(stats, status_to_string(stats)));
   res.set_content_type("text/plain");
