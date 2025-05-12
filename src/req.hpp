@@ -11,7 +11,7 @@ namespace fc {
 
 struct cookies {
 public:
-  bool parsed = false;
+  bool m_parsed = false;
   std::vector<std::pair<std::string_view, std::string_view>> m_cookies;
 
   cookies() = default;
