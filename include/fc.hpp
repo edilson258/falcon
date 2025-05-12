@@ -191,4 +191,6 @@ private:
   impl *m_pimpl;
 };
 
+std::string method_to_string(method);
+
 } // namespace fc

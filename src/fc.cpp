@@ -277,13 +277,11 @@ void app::impl::on_open_file(uv_fs_t *open_req) {
     app::impl::send_response_head(ctx->m_req.value(), res);
     app::impl::send_response_body(std::move(ctx->m_req.value()), std::move(res));
 
-    // clean up
     delete ctx;
   } else {
     ctx->m_res.value().set_header("Transfer-Encoding", "chunked");
     send_response_head(ctx->m_req.value(), ctx->m_res.value());
 
-    // discard the request and response objects since they are no longer needed
     ctx->m_req.reset();
     ctx->m_res.reset();
 
@@ -312,7 +310,6 @@ void app::impl::on_read_file_chunk(uv_fs_t *read_req) {
 
     // read next chunk
     ctx->reset_chunk();
-
     uv_fs_t *next_read_req = new uv_fs_t;
     next_read_req->data = ctx;
     uv_buf_t next_read_buf = uv_buf_init(ctx->m_chunk, sizeof(ctx->m_chunk));
