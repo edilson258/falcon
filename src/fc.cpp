@@ -1,13 +1,13 @@
-#include "include/fc.hpp"
 #include "const.hpp"
 #include "debug.hpp"
-#include "external/llhttp/llhttp.h"
 #include "http.hpp"
 #include "req.hpp"
 #include "res.hpp"
 #include "router.hpp"
 #include "signals.h"
 #include "utils.hpp"
+
+#include "external/llhttp/llhttp.h"
 
 #define FC_BACKLOG (128)
 #define MAX_REQ_LEN (1024 * 1024 * 5) // 5 MB
@@ -74,7 +74,7 @@ public:
   }
 
   void reset_chunk() {
-    memset(m_chunk, 0, sizeof(m_chunk));
+    std::memset(m_chunk, 0, sizeof(m_chunk));
   }
 };
 
