@@ -28,6 +28,14 @@ response request::next() {
   return next_handler(*this);
 }
 
+method request::get_method() {
+  return m_pimpl->m_method;
+}
+
+std::string_view &request::get_path() {
+  return m_pimpl->m_path;
+}
+
 std::optional<std::string_view> request::get_param(const std::string &key) {
   if (auto it = std::find_if(m_pimpl->m_params.begin(), m_pimpl->m_params.end(), [key](const std::pair<std::string_view, std::string_view> &p) { return p.first == key; }); it != m_pimpl->m_params.end())
     return it->second;
