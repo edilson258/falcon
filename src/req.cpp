@@ -56,7 +56,6 @@ std::optional<std::string_view> request::get_cookie(const std::string &name) {
   if (!m_pimpl->m_cookies) {
     m_pimpl->m_cookies = std::make_unique<cookies>();
     m_pimpl->m_cookies->parse(cookies_header.value());
-    m_pimpl->m_cookies->parsed = true;
   }
   return m_pimpl->m_cookies->get(name);
 }
@@ -74,6 +73,7 @@ inline std::string_view trim(std::string_view str) {
 }
 
 void cookies::parse(std::string_view header) {
+  m_parsed = true;
   while (!header.empty()) {
     size_t semicolon_pos = header.find(';');
     std::string_view token = header.substr(0, semicolon_pos);
@@ -89,7 +89,7 @@ void cookies::parse(std::string_view header) {
       continue;
     std::string_view name = trim(token.substr(0, eq_pos));
     std::string_view value = trim(token.substr(eq_pos + 1));
-    if (!name.empty()) {
+    if (!name.empty() && !value.empty()) {
       m_cookies.push_back({name, value});
     }
   }
