@@ -41,7 +41,7 @@ public:
   frag *m_next;
   frag *m_child;
 
-  frag() = default;
+  frag() : m_handlers(nullptr) {};
   frag(frag_type type, std::string label) : m_type(type), m_label(label), m_handlers(nullptr), m_next(nullptr), m_child(nullptr) {};
 };
 
@@ -52,9 +52,9 @@ public:
   root_router() = default;
 
   void add(method method, const std::string, path_handler, const std::vector<path_handler> &);
-  bool match(request &) const;
+  bool match_and_fill_req(request &) const;
 
-  static std::string_view normalize_path(std::string_view);
+  static std::string_view norm_path(std::string_view);
   static std::vector<std::string_view> split_path(const std::string_view);
 };
 

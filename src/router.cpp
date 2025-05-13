@@ -1,3 +1,4 @@
+#include <cassert>
 #include <cstdio>
 #include <cstring>
 #include <stdexcept>
@@ -38,8 +39,7 @@ void router::use(path_handler middleware) {
   m_pimpl->m_middlewares.insert(m_pimpl->m_middlewares.begin(), middleware);
 }
 
-std::string_view root_router::normalize_path(std::string_view in) {
-  if (in.empty()) return in;
+std::string_view root_router::norm_path(std::string_view in) {
   char *data = const_cast<char *>(in.data()); // ⚠️ data must be mutable
   size_t ri = 0, wi = 0;
   bool pslash = false;
@@ -58,35 +58,54 @@ std::string_view root_router::normalize_path(std::string_view in) {
 }
 
 std::vector<std::string_view> root_router::split_path(const std::string_view norm_path) {
-  size_t offset = 1; // skip the leading '/'
-  std::vector<std::string_view> parts;
+  size_t offset = 1; // skip the leading '/', we assume that the path is normalized
+  std::vector<std::string_view> frags;
   while (offset < norm_path.length()) {
     size_t next_slash = norm_path.find('/', offset);
     if (next_slash == std::string_view::npos) {
-      parts.emplace_back(norm_path.substr(offset));
+      frags.emplace_back(norm_path.substr(offset));
       break;
     }
-    parts.emplace_back(norm_path.substr(offset, next_slash - offset));
+    frags.emplace_back(norm_path.substr(offset, next_slash - offset));
     offset = next_slash + 1;
   }
-  return parts;
+  return frags;
+}
+
+std::string extract_frag_label(frag_type type, const std::string_view &label) {
+  if (type == frag_type::DYNAMIC) {
+    assert(label.length() > 1 && "Missing dynamic parameter name, try ':id'");
+    return std::string(label.substr(1));
+  }
+  if (type == frag_type::WILDCARD) {
+    return std::string(label.substr(1));
+  }
+  return std::string(label);
 }
 
 void root_router::add(method method, const std::string path, path_handler handler, const std::vector<path_handler> &midwares) {
-  auto path_fragments = split_path(normalize_path(path));
-  frag *current = &m_root;
+  auto path_fragments = split_path(norm_path(path));
+  frag *curr = &m_root;
 
   for (const auto &frg : path_fragments) {
     frag_type type;
+
     switch (frg.at(0)) {
-    case ':': type = frag_type::DYNAMIC; break;
-    case '*': type = frag_type::WILDCARD; break;
-    default: type = frag_type::STATIC; break;
+    case ':':
+      type = frag_type::DYNAMIC;
+      break;
+    case '*':
+      type = frag_type::WILDCARD;
+      break;
+    default:
+      type = frag_type::STATIC;
+      break;
     }
 
     bool found = false;
     frag *prev = nullptr;
-    frag *child = current->m_child;
+    frag *child = curr->m_child;
+
     while (child) {
       if ((type == frag_type::STATIC && child->m_label == frg) || (type != frag_type::STATIC && child->m_type == type)) {
         if (type == frag_type::DYNAMIC && child->m_label != frg && (child->m_handlers && !child->m_handlers->at((int)method).empty())) {
@@ -98,56 +117,81 @@ void root_router::add(method method, const std::string path, path_handler handle
       prev = child;
       child = child->m_next;
     }
+
     if (!found) {
-      frag *newFrag = new frag(type, std::string(frag_type::DYNAMIC == type ? frg.substr(1) : frg));
+      frag *new_frag = new frag(type, extract_frag_label(type, frg));
       if (prev) {
-        prev->m_next = newFrag;
+        prev->m_next = new_frag;
       } else {
-        current->m_child = newFrag;
+        curr->m_child = new_frag;
       }
-      child = newFrag;
+      child = new_frag;
     }
-    current = child;
+    curr = child;
   }
-  if (!current->m_handlers) {
-    current->m_handlers = new frag_handlers_t();
+
+  if (!curr->m_handlers) {
+    curr->m_handlers = new frag_handlers_t();
   }
-  if (!current->m_handlers->at(static_cast<int>(method)).empty()) {
-    throw std::runtime_error("Duplicate route for method " + std::to_string(static_cast<int>(method)) + " at path: " + path);
+
+  int pos = static_cast<int>(method);
+  if (!curr->m_handlers->at(pos).empty()) {
+    throw std::runtime_error("Duplicate route for method " + std::to_string(pos) + " at path: " + path);
   }
-  current->m_handlers->at(static_cast<int>(method)).insert(current->m_handlers->at(static_cast<int>(method)).begin(), handler);
-  current->m_handlers->at(static_cast<int>(method)).insert(current->m_handlers->at(static_cast<int>(method)).end(), midwares.begin(), midwares.end());
+
+  curr->m_handlers->at(pos).insert(curr->m_handlers->at(pos).begin(), handler);
+  curr->m_handlers->at(pos).insert(curr->m_handlers->at(pos).end(), midwares.begin(), midwares.end());
 }
 
-bool root_router::match(request &req) const {
-  auto fragments = split_path(normalize_path(req.m_pimpl->m_path));
-  const frag *current = &m_root;
+bool root_router::match_and_fill_req(request &req) const {
+  auto path = norm_path(req.get_path());
+  auto fragments = split_path(path);
+  const frag *curr = &m_root;
+
+  if (fragments.empty()) {
+    if (curr->m_child && ((curr->m_child->m_type == frag_type::STATIC && curr->m_child->m_label == "/") || curr->m_child->m_type == frag_type::WILDCARD)) {
+      req.m_pimpl->m_handlers = curr->m_child->m_handlers->at(static_cast<int>(req.m_pimpl->m_method));
+      return true;
+    }
+    return false;
+  }
+
   for (auto frg : fragments) {
     bool found = false;
-    const frag *child = current->m_child;
+    const frag *child = curr->m_child;
+
     while (child && !found) {
       switch (child->m_type) {
-      case frag_type::STATIC: found = frg == child->m_label; break;
+      case frag_type::STATIC:
+        found = frg == child->m_label;
+        break;
       case frag_type::DYNAMIC:
         found = true;
         req.m_pimpl->m_params.emplace_back(child->m_label, frg);
         break;
       case frag_type::WILDCARD:
-        // TODOOO: fill handler & midware
+        auto handler = child->m_handlers->at(static_cast<int>(req.m_pimpl->m_method));
+        assert(!handler.empty());
+        req.m_pimpl->m_params.emplace_back(child->m_label, path);
+        req.m_pimpl->m_handlers.insert(req.m_pimpl->m_handlers.begin(), handler.begin(), handler.end());
         return true;
       }
+
       if (found) {
-        current = child;
+        curr = child;
         break;
       }
       child = child->m_next;
     }
+
     if (!found) return false;
   }
-  auto handler = current->m_handlers->at(static_cast<int>(req.m_pimpl->m_method));
-  if (handler.empty()) return false;
-  req.m_pimpl->m_handlers.insert(req.m_pimpl->m_handlers.begin(), handler.begin(), handler.end());
-  return true;
+
+  if (auto handler = curr->m_handlers->at(static_cast<int>(req.m_pimpl->m_method)); !handler.empty()) {
+    req.m_pimpl->m_handlers.insert(req.m_pimpl->m_handlers.begin(), handler.begin(), handler.end());
+    return true;
+  }
+  return false;
 }
 
 } // namespace fc
