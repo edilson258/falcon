@@ -30,7 +30,7 @@ enum class frag_type {
   WILDCARD = 3,
 };
 
-using frag_handlers_t = std::array<std::vector<path_handler>, static_cast<int>(method::__COUNT__)>;
+using frag_handlers_t = std::array<std::vector<path_handler>, static_cast<int>(method::PATCH)>;
 
 struct frag {
 public:
@@ -51,7 +51,7 @@ public:
 
   root_router() = default;
 
-  void add(method method, const std::string, path_handler, const std::vector<path_handler> &);
+  void add(method, const std::string, path_handler, const std::vector<path_handler> &);
   bool match_and_fill_req(request &) const;
 
   static std::string_view norm_path(std::string_view);
