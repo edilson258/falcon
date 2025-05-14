@@ -101,7 +101,7 @@ public:
   response(const response &other) = delete;
   response &operator=(const response &other) = delete;
   response(response &&other) noexcept;
-  response &operator=(response &&other) noexcept;
+  response &operator=(response &&other) = delete;
 
 private:
   struct impl;

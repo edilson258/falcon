@@ -16,12 +16,6 @@ response::response(response &&other) noexcept {
   other.m_pimpl = nullptr;
 }
 
-response &response::operator=(response &&other) noexcept {
-  m_pimpl = other.m_pimpl;
-  other.m_pimpl = nullptr;
-  return *this;
-}
-
 status response::get_status() const {
   return m_pimpl->m_status;
 }
