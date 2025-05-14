@@ -1,3 +1,8 @@
+#include <cstdio>
+#include <filesystem>
+#include <iostream>
+#include <string>
+
 #include "const.hpp"
 #include "debug.hpp"
 #include "http.hpp"
@@ -12,13 +17,12 @@
 #define FC_BACKLOG (128)
 #define MAX_REQ_LEN (1024 * 1024 * 5) // 5 MB
 
+namespace fs = std::filesystem;
+
 namespace fc {
 
 struct app::impl {
 public:
-  std::string m_views_dir = "views/";
-  std::string m_assets_dir = "public/";
-
   root_router m_router;
   http_parser m_http_parser;
 
@@ -26,23 +30,32 @@ public:
   uv_tcp_t m_host_sock;
   struct sockaddr_in m_addr;
 
+  std::filesystem::path m_views;
+  std::filesystem::path m_assets;
+
   impl() : m_router(), m_http_parser(), m_loop(uv_default_loop()) {
     m_loop->data = this;
     uv_tcp_init(m_loop, &m_host_sock);
+
+    m_views = std::filesystem::absolute("views/");
+    m_assets = std::filesystem::absolute("public/");
   }
 
   void parse_http_request(request);
   void match_request_to_handler(request);
 
   // reponse handlers
+  void try_serve_static_file(request);
   void send_response(request, response);
   void send_response_file(request, response);
   static void send_response_head(request &, response &);
   static void send_response_body(request, response);
+  static void send_response_file_error(request, response);
 
   // uv callbacks
   static void on_close_conn(uv_handle_t *client);
   static void on_open_file(uv_fs_t *);
+  static void on_stat_file(uv_fs_t *);
   static void on_read_file_chunk(uv_fs_t *);
   static void on_connection(uv_stream_t *server, int status);
   static void on_write_buf(uv_write_t *req, int status);
@@ -55,21 +68,21 @@ public:
 
 struct send_file_ctx {
 public:
-  int m_file_fd;
+  int m_fd;
   uv_stream_t *m_remote;
   char m_chunk[64 * 1024]; // 64KB
 
   std::optional<request> m_req;
   std::optional<response> m_res;
 
-  send_file_ctx(int fd, uv_stream_t *sock, request req, response res) : m_file_fd(fd), m_remote(sock), m_req(std::move(req)), m_res(std::move(res)) {
+  send_file_ctx(int fd, uv_stream_t *sock, request req, response res) : m_fd(fd), m_remote(sock), m_req(std::move(req)), m_res(std::move(res)) {
     reset_chunk();
   };
 
   ~send_file_ctx() {
-    if (m_file_fd != -1) {
+    if (m_fd != -1) {
       uv_fs_t close_req;
-      uv_fs_close(uv_default_loop(), &close_req, m_file_fd, nullptr);
+      uv_fs_close(uv_default_loop(), &close_req, m_fd, nullptr);
     }
   }
 
@@ -112,11 +125,11 @@ void app::use(const router &router) {
 }
 
 void app::set_views_dir(const std::string dir_path) {
-  m_pimpl->m_views_dir = dir_path;
+  m_pimpl->m_views = dir_path;
 }
 
 void app::set_assets_dir(const std::string dir_path) {
-  m_pimpl->m_assets_dir = dir_path;
+  m_pimpl->m_assets = dir_path;
 }
 
 void app::impl::add_route(method method, std::string path, path_handler handler, const std::vector<path_handler> &midwares) {
@@ -182,7 +195,7 @@ void app::impl::parse_http_request(request req) {
 }
 
 void app::impl::match_request_to_handler(request req) {
-  if (m_router.match(req)) {
+  if (m_router.match_and_fill_req(req)) {
     response res = req.next();
     return send_response(std::move(req), std::move(res));
   }
@@ -191,10 +204,18 @@ void app::impl::match_request_to_handler(request req) {
     return send_response(std::move(req), response::ok(status::NOT_FOUND));
   }
 
-  auto path = join_paths(m_assets_dir, std::string(req.m_pimpl->m_path));
-  auto res = response(new response::impl(status::OK, response_file(path)));
-  res.set_header("Content-Type", contype_from_ext(path.extension().string()));
-  return send_response_file(std::move(req), std::move(res));
+  try_serve_static_file(std::move(req));
+}
+
+void app::impl::try_serve_static_file(request req) {
+  fs::path full_path = join_paths(m_assets, std::string(req.get_path()));
+  if (full_path.string().starts_with(m_assets.string())) {
+    auto res = response(new response::impl(status::OK, response_file(full_path.string())));
+    res.set_header("Content-Type", contype_from_ext(full_path.extension().string()));
+    send_response_file(std::move(req), std::move(res));
+  } else {
+    send_response(std::move(req), response::ok(status::NOT_FOUND));
+  }
 }
 
 void app::impl::send_response_head(request &req, response &res) {
@@ -249,14 +270,14 @@ void app::impl::send_response(request req, response res) {
 }
 
 void app::impl::send_response_file(request req, response res) {
-  response_file &rf = res.m_pimpl->m_file;
+  response_file &file = res.m_pimpl->m_file;
 
-  if (rf.m_isview) {
-    rf.m_path = join_paths(m_views_dir, rf.m_path).string();
+  if (file.m_isview) {
+    file.m_path = join_paths(m_views, res.m_pimpl->m_file.m_path).string();
   }
 
   uv_fs_t *open_req = new uv_fs_t;
-  const char *path = rf.m_path.c_str();
+  const char *path = file.m_path.c_str();
   uv_stream_t *remote = req.m_pimpl->m_remote;
   open_req->data = new send_file_ctx(-1, remote, std::move(req), std::move(res));
   uv_fs_open(uv_default_loop(), open_req, path, O_RDONLY, 0, app::impl::on_open_file);
@@ -264,35 +285,54 @@ void app::impl::send_response_file(request req, response res) {
 
 void app::impl::on_open_file(uv_fs_t *open_req) {
   auto ctx = (send_file_ctx *)open_req->data;
-  response_file &rf = ctx->m_res.value().m_pimpl->m_file;
+  ctx->m_fd = open_req->result;
 
   if (open_req->result < 0) {
-    debug::error("Fail to open file: %s, %s", open_req->path, uv_strerror(open_req->result));
-
-    response res = response::ok(status::NOT_FOUND);
-    if (rf.m_isview) {
-      res = response::ok(status::INTERNAL_SERVER_ERROR);
-    }
-    res.set_header("Content-Len", std::to_string(res.m_pimpl->m_body.length()));
-    app::impl::send_response_head(ctx->m_req.value(), res);
-    app::impl::send_response_body(std::move(ctx->m_req.value()), std::move(res));
-
+    send_response_file_error(std::move(ctx->m_req.value()), std::move(ctx->m_res.value()));
     delete ctx;
   } else {
+    uv_fs_t *stat_req = new uv_fs_t;
+    stat_req->data = ctx;
+    uv_fs_fstat(uv_default_loop(), stat_req, open_req->result, app::impl::on_stat_file);
+  }
+
+  delete open_req;
+}
+
+void app::impl::on_stat_file(uv_fs_t *stat_req) {
+  auto ctx = (send_file_ctx *)stat_req->data;
+
+  if (stat_req->result >= 0 && S_ISREG(stat_req->statbuf.st_mode)) {
     ctx->m_res.value().set_header("Transfer-Encoding", "chunked");
     send_response_head(ctx->m_req.value(), ctx->m_res.value());
 
     ctx->m_req.reset();
     ctx->m_res.reset();
 
-    ctx->m_file_fd = open_req->result;
     uv_fs_t *read_req = new uv_fs_t;
     read_req->data = ctx;
     uv_buf_t read_buf = uv_buf_init(ctx->m_chunk, sizeof(ctx->m_chunk));
-    uv_fs_read(uv_default_loop(), read_req, ctx->m_file_fd, &read_buf, 1, -1, app::impl::on_read_file_chunk);
+    uv_fs_read(uv_default_loop(), read_req, ctx->m_fd, &read_buf, 1, -1, app::impl::on_read_file_chunk);
+  } else {
+    send_response_file_error(std::move(ctx->m_req.value()), std::move(ctx->m_res.value()));
+    delete ctx;
   }
 
-  delete open_req;
+  delete stat_req;
+}
+
+void app::impl::send_response_file_error(request req, response res) {
+  if (res.m_pimpl->m_file.m_isview) {
+    res.set_status(status::INTERNAL_SERVER_ERROR);
+    res.m_pimpl->m_body = "Internal server error";
+  } else {
+    res.set_status(status::NOT_FOUND);
+    res.m_pimpl->m_body = "Not found";
+  }
+
+  res.set_header("Content-Len", std::to_string(res.m_pimpl->m_body.length()));
+  app::impl::send_response_head(req, res);
+  app::impl::send_response_body(std::move(req), std::move(res));
 }
 
 void app::impl::on_read_file_chunk(uv_fs_t *read_req) {
@@ -313,7 +353,7 @@ void app::impl::on_read_file_chunk(uv_fs_t *read_req) {
     uv_fs_t *next_read_req = new uv_fs_t;
     next_read_req->data = ctx;
     uv_buf_t next_read_buf = uv_buf_init(ctx->m_chunk, sizeof(ctx->m_chunk));
-    uv_fs_read(uv_default_loop(), next_read_req, ctx->m_file_fd, &next_read_buf, 1, -1, app::impl::on_read_file_chunk);
+    uv_fs_read(uv_default_loop(), next_read_req, ctx->m_fd, &next_read_buf, 1, -1, app::impl::on_read_file_chunk);
   } else {
     if (read_req->result < 0) {
       debug::error("Fail to read file chunk, %s", uv_strerror(read_req->result));

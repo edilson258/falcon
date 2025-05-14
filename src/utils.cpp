@@ -20,9 +20,9 @@ std::tuple<std::string, std::string> split_address(const std::string &input) {
   return {"0.0.0.0", "8080"};
 }
 
-std::filesystem::path join_paths(const std::string &base_str, const std::string &path_str) {
-  auto base = std::filesystem::absolute(std::filesystem::path(base_str));
-  auto full = base.concat(path_str).lexically_normal().make_preferred();
+fs::path join_paths(std::string b, std::string p) {
+  auto base = fs::absolute(fs::path(b));
+  auto full = base.concat(p).lexically_normal().make_preferred();
   return full;
 }
 

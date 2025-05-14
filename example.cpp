@@ -34,9 +34,6 @@ int main(int argc, char *argv[]) {
   users_db.push_back(user_schema("milkey@test.com", "strongpass"));
 
   fc::app app;
-  app.set_views_dir("views/");
-  app.set_assets_dir("public/");
-
   fc::router router("/users");
 
   // middlewares
