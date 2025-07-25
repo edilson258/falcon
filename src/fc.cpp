@@ -132,12 +132,17 @@ void app::set_assets_dir(const std::string dir_path) {
   m_pimpl->m_assets = dir_path;
 }
 
-void app::impl::add_route(method method, std::string path, path_handler handler, const std::vector<path_handler> &midwares) {
+void app::impl::add_route(method method, std::string path, path_handler handler, const std::vector<path_handler> &middwares) {
   if (path.length() < 1 || path.at(0) != '/') path.insert(0, "/");
-  m_router.add(method, path, handler, midwares);
+  m_router.add(method, path, handler, middwares);
 }
 
 int app::listen(const std::string addr, std::function<void(const std::string &)> call_back) {
+  char *errstr;
+  int err = m_pimpl->m_router.m_tree.compile(&errstr);
+  if (err != 0) {
+    free(errstr);
+  }
   auto [host, port] = split_address(addr);
   uv_ip4_addr(host.c_str(), std::stoi(port), &m_pimpl->m_addr);
   int result = uv_tcp_bind(&m_pimpl->m_host_sock, (const struct sockaddr *)&m_pimpl->m_addr, 0);
@@ -195,7 +200,7 @@ void app::impl::parse_http_request(request req) {
 }
 
 void app::impl::match_request_to_handler(request req) {
-  if (m_router.match_and_fill_req(req)) {
+  if (m_router.match(req)) {
     response res = req.next();
     return send_response(std::move(req), std::move(res));
   }

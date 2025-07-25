@@ -1,5 +1,4 @@
 #include <cassert>
-#include <cstdlib>
 #include <iostream>
 #include <string>
 #include <string_view>
@@ -46,7 +45,7 @@ int main(int argc, char *argv[]) {
   router.delet("/:id", users_delete);
 
   // render html file
-  app.get("/", [](fc::request &req) {
+  app.get("/hello", [](fc::request &req) {
     return fc::response::render("index.html");
   });
 
@@ -101,6 +100,7 @@ bool is_valid_token(std::string_view token) {
 }
 
 fc::response auth_middleware(fc::request &req) {
+  std::cout << "Auth middleware called" << std::endl;
   if (auto auth_header = req.get_header("Authorization"); auth_header.has_value()) {
     if (is_valid_token(auth_header.value())) {
       return req.next();

@@ -1,13 +1,14 @@
 #include <cassert>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
 #include "include/fc.hpp"
 #include "req.hpp"
 #include "router.hpp"
+#include "src/debug.hpp"
 
 namespace fc {
 
@@ -39,161 +40,31 @@ void router::use(path_handler middleware) {
   m_pimpl->m_middlewares.insert(m_pimpl->m_middlewares.begin(), middleware);
 }
 
-std::string_view root_router::norm_path(std::string_view in) {
-  char *data = const_cast<char *>(in.data()); // ⚠️ data must be mutable
-  size_t ri = 0, wi = 0;
-  bool pslash = false;
-  while (ri < in.length()) {
-    char ch = data[ri++];
-    if ((ch == '/' && pslash) || std::isspace(static_cast<unsigned char>(ch))) {
-      continue;
-    }
-    data[wi++] = ch;
-    pslash = (ch == '/');
+struct route_payload {
+public:
+  std::string m_path;
+  std::vector<path_handler> m_handlers;
+
+  route_payload(std::string path_, std::vector<path_handler> handlers_) : m_path(path_), m_handlers(handlers_) {}
+};
+
+void root_router::add(const method method_, const std::string path_, const path_handler handler_, const std::vector<path_handler> middwares_) {
+  std::vector<path_handler> handlers = {handler_};
+  handlers.insert(handlers.end(), middwares_.begin(), middwares_.end());
+  auto payload = new route_payload(path_, handlers);
+  if (NULL == m_tree.insert_routel((int)method_, payload->m_path.c_str(), payload->m_path.length(), (void *)payload)) {
+    debug::error("Fail to add route %s", payload->m_path.c_str());
   }
-  if (wi > 1 && data[wi - 1] == '/') {
-    --wi;
-  }
-  return std::string_view(data, wi);
 }
 
-std::vector<std::string_view> root_router::split_path(const std::string_view norm_path) {
-  size_t offset = 1; // skip the leading '/', we assume that the path is normalized
-  std::vector<std::string_view> frags;
-  while (offset < norm_path.length()) {
-    size_t next_slash = norm_path.find('/', offset);
-    if (next_slash == std::string_view::npos) {
-      frags.emplace_back(norm_path.substr(offset));
-      break;
-    }
-    frags.emplace_back(norm_path.substr(offset, next_slash - offset));
-    offset = next_slash + 1;
-  }
-  return frags;
-}
-
-std::string extract_frag_label(frag_type type, const std::string_view &label) {
-  if (type == frag_type::DYNAMIC) {
-    assert(label.length() > 1 && "Missing dynamic parameter name, try ':id'");
-    return std::string(label.substr(1));
-  }
-  if (type == frag_type::WILDCARD) {
-    return std::string(label.substr(1));
-  }
-  return std::string(label);
-}
-
-void root_router::add(method method, const std::string path, path_handler handler, const std::vector<path_handler> &midwares) {
-  auto fragments = split_path(norm_path(path));
-  frag *curr = &m_root;
-
-  if (fragments.empty()) {
-    curr->m_type = frag_type::STATIC;
-    curr->m_label = "/";
-  }
-
-  int pos = static_cast<int>(method) - 1;
-
-  for (const auto &frg : fragments) {
-    frag_type type;
-
-    switch (frg.at(0)) {
-    case ':': type = frag_type::DYNAMIC; break;
-    case '*': type = frag_type::WILDCARD; break;
-    default: type = frag_type::STATIC; break;
-    }
-
-    bool found = false;
-    frag *prev = nullptr;
-    frag *child = curr->m_child;
-
-    while (child) {
-      if ((type == frag_type::STATIC && child->m_label == frg) || (type != frag_type::STATIC && child->m_type == type)) {
-        if (type == frag_type::DYNAMIC && child->m_label != frg && (child->m_handlers && !child->m_handlers->at(pos).empty())) {
-          throw std::runtime_error("Conflicting dynamic segment names: " + child->m_label + " vs " + std::string(frg));
-        }
-        found = true;
-        break;
-      }
-      prev = child;
-      child = child->m_next;
-    }
-
-    if (!found) {
-      frag *new_frag = new frag(type, extract_frag_label(type, frg));
-      if (prev) {
-        prev->m_next = new_frag;
-      } else {
-        curr->m_child = new_frag;
-      }
-      child = new_frag;
-    }
-    curr = child;
-  }
-
-  if (!curr->m_handlers) {
-    curr->m_handlers = new frag_handlers_t();
-  }
-
-  if (!curr->m_handlers->at(pos).empty()) {
-    throw std::runtime_error("Duplicate route for method " + std::to_string(pos) + " at path: " + path);
-  }
-
-  curr->m_handlers->at(pos).insert(curr->m_handlers->at(pos).begin(), handler);
-  curr->m_handlers->at(pos).insert(curr->m_handlers->at(pos).end(), midwares.begin(), midwares.end());
-}
-
-bool root_router::match_and_fill_req(request &req) const {
-  auto path = norm_path(req.get_path());
-  auto fragments = split_path(path);
-  int pos = static_cast<int>(req.m_pimpl->m_method) - 1;
-
-  const frag *curr = &m_root;
-
-  if (fragments.empty()) {
-    if (curr->m_handlers && ((curr->m_type == frag_type::STATIC && curr->m_label == "/") || curr->m_type == frag_type::WILDCARD)) {
-      req.m_pimpl->m_handlers = curr->m_handlers->at(pos);
-      return true;
-    }
-    return false;
-  }
-
-  for (auto frg : fragments) {
-    bool found = false;
-    const frag *child = curr->m_child;
-
-    while (child && !found) {
-      switch (child->m_type) {
-      case frag_type::STATIC:
-        found = frg == child->m_label;
-        break;
-      case frag_type::DYNAMIC:
-        found = true;
-        req.m_pimpl->m_params.emplace_back(child->m_label, frg);
-        break;
-      case frag_type::WILDCARD:
-        auto handler = child->m_handlers->at(pos);
-        assert(!handler.empty());
-        req.m_pimpl->m_params.emplace_back(child->m_label, path);
-        req.m_pimpl->m_handlers.insert(req.m_pimpl->m_handlers.begin(), handler.begin(), handler.end());
-        return true;
-      }
-
-      if (found) {
-        curr = child;
-        break;
-      }
-      child = child->m_next;
-    }
-
-    if (!found) return false;
-  }
-
-  if (auto handler = curr->m_handlers->at(pos); !handler.empty()) {
-    req.m_pimpl->m_handlers.insert(req.m_pimpl->m_handlers.begin(), handler.begin(), handler.end());
+bool root_router::match(request &req) const {
+  r3::MatchEntry entry(req.m_pimpl->m_path.data(), req.m_pimpl->m_path.length());
+  entry.set_request_method(static_cast<int>(req.m_pimpl->m_method));
+  if (r3::Route matched_route = m_tree.match_route(entry); matched_route) {
+    auto payload = reinterpret_cast<route_payload *>(matched_route.data());
+    req.m_pimpl->m_handlers.insert(req.m_pimpl->m_handlers.end(), payload->m_handlers.begin(), payload->m_handlers.end());
     return true;
   }
-
   return false;
 }
 

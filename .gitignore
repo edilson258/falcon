@@ -7,3 +7,4 @@ main.cpp
 a.out
 _others/
 compile_commands.json
+.zed/

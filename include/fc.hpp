@@ -11,14 +11,13 @@
 namespace fc {
 
 enum class method {
-  GET = 0,
-  POST = 1,
-  PUT = 2,
-  DELETE = 3,
-  PATCH = 4,
-
-  // for internal use only and must be the last
-  __COUNT__,
+  GET = 2,
+  POST = 2 << 1,
+  PUT = 2 << 2,
+  DELETE = 2 << 3,
+  PATCH = 2 << 4,
+  HEAD = 2 << 5,
+  OPTIONS = 2 << 6,
 };
 
 enum class status {
