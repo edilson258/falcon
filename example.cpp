@@ -41,8 +41,8 @@ int main(int argc, char *argv[]) {
 
   router.post("", users_create);
   router.get("", users_find_many);
-  router.get("/:id", users_find_by_id);
-  router.delet("/:id", users_delete);
+  router.get("/{id:\\d+}", users_find_by_id);
+  router.delet("/{id}", users_delete);
 
   // render html file
   app.get("/hello", [](fc::request &req) {
@@ -100,7 +100,6 @@ bool is_valid_token(std::string_view token) {
 }
 
 fc::response auth_middleware(fc::request &req) {
-  std::cout << "Auth middleware called" << std::endl;
   if (auto auth_header = req.get_header("Authorization"); auth_header.has_value()) {
     if (is_valid_token(auth_header.value())) {
       return req.next();

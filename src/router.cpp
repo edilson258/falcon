@@ -1,8 +1,11 @@
 #include <cassert>
+#include <cstddef>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 #include "include/fc.hpp"
@@ -60,8 +63,14 @@ void root_router::add(const method method_, const std::string path_, const path_
 bool root_router::match(request &req) const {
   r3::MatchEntry entry(req.m_pimpl->m_path.data(), req.m_pimpl->m_path.length());
   entry.set_request_method(static_cast<int>(req.m_pimpl->m_method));
-  if (r3::Route matched_route = m_tree.match_route(entry); matched_route) {
+  if (r3::Route matched_route = m_tree.match_route(entry); !matched_route.is_null()) {
     auto payload = reinterpret_cast<route_payload *>(matched_route.data());
+    // std::vector<std::pair<std::string_view, std::string_view>> m_params;
+    for (size_t i = 0; i < matched_route.get()->slugs.size; i++) {
+      req.m_pimpl->m_params.push_back(std::make_pair<std::string_view, std::string_view>(
+          std::string_view(entry.get()->vars.slugs.entries[i].base, entry.get()->vars.slugs.entries[i].len),
+          std::string_view(entry.get()->vars.tokens.entries[i].base, entry.get()->vars.tokens.entries[i].len)));
+    }
     req.m_pimpl->m_handlers.insert(req.m_pimpl->m_handlers.end(), payload->m_handlers.begin(), payload->m_handlers.end());
     return true;
   }

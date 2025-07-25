@@ -1,6 +1,5 @@
 #include <cstdio>
 #include <filesystem>
-#include <iostream>
 #include <string>
 
 #include "const.hpp"
@@ -178,11 +177,13 @@ void app::impl::on_alloc_req_buf(uv_handle_t *client, size_t len, uv_buf_t *buf)
 void app::impl::on_read_req_buf(uv_stream_t *client, long nread, const uv_buf_t *buf) {
   uv_read_stop(client);
   if (nread < 0) {
-    if (nread != UV_EOF)
-      std::cerr << "[FALCON ERROR]: Failed to read remote socket, " << uv_strerror(nread) << std::endl;
-    // delete[] buf->base;
+    if (nread != UV_EOF) {
+      debug::error("Fail to read remote socket, %s", uv_strerror(nread));
+    }
+    delete[] buf->base;
     uv_close((uv_handle_t *)client, app::impl::on_close_conn);
   } else {
+    // TODO: don't store this app instance in loop data
     auto this_ = (app::impl *)client->loop->data;
     std::unique_ptr<char[]> raw(buf->base);
     request req = request(new request::impl(client, std::move(raw)));
@@ -205,11 +206,11 @@ void app::impl::match_request_to_handler(request req) {
     return send_response(std::move(req), std::move(res));
   }
 
-  if (method::GET != req.m_pimpl->m_method) {
-    return send_response(std::move(req), response::ok(status::NOT_FOUND));
+  if (method::GET == req.m_pimpl->m_method) {
+    return try_serve_static_file(std::move(req));
   }
 
-  try_serve_static_file(std::move(req));
+  send_response(std::move(req), response::ok(status::NOT_FOUND));
 }
 
 void app::impl::try_serve_static_file(request req) {

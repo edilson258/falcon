@@ -1,5 +1,4 @@
 #include <cassert>
-#include <cstdio>
 #include <filesystem>
 #include <iostream>
 #include <regex>
