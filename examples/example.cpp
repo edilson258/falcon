@@ -4,8 +4,7 @@
 #include <string_view>
 #include <vector>
 
-#include "external/nlohmann/json.hpp"
-#include "include/fc.hpp"
+#include "falcon.h"
 
 struct user_schema {
 public:
@@ -46,6 +45,7 @@ int main(int argc, char *argv[]) {
 
   // render html file
   app.get("/hello", [](fc::request &req) {
+    std::cout << "At hello/\n";
     return fc::response::render("index.html");
   });
 

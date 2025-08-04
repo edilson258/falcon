@@ -1,9 +1,12 @@
-[submodule "external/jack"]
-	path = external/jack
-	url = https://github.com/edilson258/jack.git
-[submodule "tests/unity"]
-	path = tests/unity
-	url = https://github.com/ThrowTheSwitch/Unity.git
-[submodule "external/r3"]
-	path = external/r3
-	url = https://github.com/c9s/r3.git
+[submodule "deps/libuv"]
+	path = deps/libuv
+	url = https://github.com/libuv/libuv
+[submodule "deps/spdlog"]
+	path = deps/spdlog
+	url = https://github.com/gabime/spdlog
+[submodule "deps/r3"]
+	path = deps/r3
+	url = https://github.com/c9s/r3
+[submodule "deps/nljson"]
+	path = deps/nljson
+	url = https://github.com/nlohmann/json.git

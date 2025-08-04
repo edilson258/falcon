@@ -1,27 +1,27 @@
 #include <cstring>
 #include <string_view>
 
-#include "http.hpp"
-#include "req.hpp"
+#include "http.h"
+#include "request.h"
 
 namespace fc {
 
-enum llhttp_errno http_parser::parse(request *req) {
+llhttp_errno http_parser::parse(request *req) {
   m_llhttp_instance.data = req;
-  enum llhttp_errno err = llhttp_execute(&m_llhttp_instance, req->m_pimpl->m_raw.get(), strlen(req->m_pimpl->m_raw.get()));
+  const llhttp_errno err = llhttp_execute(&m_llhttp_instance, req->m_pimpl->m_raw.get(), strlen(req->m_pimpl->m_raw.get()));
   llhttp_reset(&m_llhttp_instance);
   return err;
 }
 
-int http_parser::llhttp_on_url(llhttp_t *p, const char *at, size_t len) {
-  request *r = (request *)p->data;
+int http_parser::llhttp_on_url(const llhttp_t *p, const char *at, const size_t len) {
+  const auto *r = static_cast<request *>(p->data);
   if (len < 1 || at[0] != '/') return HPE_INVALID_URL;
   r->m_pimpl->m_path = std::string_view(at, len);
   return HPE_OK;
 }
 
-int http_parser::llhttp_on_method(llhttp_t *p, const char *at, size_t len) {
-  request *r = (request *)p->data;
+int http_parser::llhttp_on_method(const llhttp_t *p, const char *at, const size_t len) {
+  const auto *r = static_cast<request *>(p->data);
   if (strncasecmp("GET", at, len) == 0) {
     r->m_pimpl->m_method = method::GET;
   } else if (strncasecmp("POST", at, len) == 0) {
@@ -38,25 +38,25 @@ int http_parser::llhttp_on_method(llhttp_t *p, const char *at, size_t len) {
   return HPE_OK;
 }
 
-int http_parser::llhttp_on_body(llhttp_t *p, const char *at, size_t len) {
-  request *req = (request *)p->data;
+int http_parser::llhttp_on_body(const llhttp_t *p, const char *at, const size_t len) {
+  const auto *req = static_cast<request *>(p->data);
   req->m_pimpl->m_raw_body = std::string_view(at, len);
   return HPE_OK;
 }
 
-int http_parser::llhttp_on_header_field(llhttp_t *p, const char *at, size_t len) {
-  request *req = (request *)p->data;
+int http_parser::llhttp_on_header_field(const llhttp_t *p, const char *at, const size_t len) {
+  const auto *req = static_cast<request *>(p->data);
   req->m_pimpl->m_headers.push_back({std::string_view(at, len), {}});
   return HPE_OK;
 }
 
-int http_parser::llhttp_on_header_value(llhttp_t *p, const char *at, size_t len) {
-  request *req = (request *)p->data;
+int http_parser::llhttp_on_header_value(const llhttp_t *p, const char *at, const size_t len) {
+  const auto *req = static_cast<request *>(p->data);
   req->m_pimpl->m_headers.back().second = std::string_view(at, len);
   return HPE_OK;
 }
 
-const char *status_to_string(status s) {
+const char *status_to_string(const status s) {
   switch (s) {
   // 1xx: Informational
   //

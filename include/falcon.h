@@ -4,9 +4,8 @@
 #include <optional>
 #include <string>
 #include <string_view>
-#include <sys/stat.h>
 
-#include "external/nlohmann/json.hpp"
+#include "json.hpp"
 
 namespace fc {
 
@@ -91,10 +90,10 @@ public:
   static response json(nlohmann::json, status stats = status::OK);
   static response render(std::string path, status stats = status::OK);
 
-  void set_status(status);
+  void set_status(status) const;
   status get_status() const;
-  void set_content_type(std::string);
-  void set_header(std::string, std::string);
+  void set_content_type(const std::string &);
+  void set_header(std::string, const std::string &);
 
   ~response();
   response(const response &other) = delete;
@@ -144,10 +143,10 @@ using path_handler = std::function<response(request &)>;
 
 struct router {
 public:
-  void get(const std::string, path_handler);
-  void post(const std::string, path_handler);
-  void put(const std::string, path_handler);
-  void delet(const std::string, path_handler);
+  void get(const std::string &, const path_handler &) const;
+  void post(const std::string &, const path_handler &) const;
+  void put(const std::string &, const path_handler &) const;
+  void delet(const std::string &path, const path_handler &) const;
   void patch(const std::string, path_handler);
 
   router(std::string base);

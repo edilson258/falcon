@@ -5,7 +5,7 @@
 #include <uv.h>
 #include <vector>
 
-#include "include/fc.hpp"
+#include "falcon.h"
 
 namespace fc {
 
@@ -36,7 +36,7 @@ public:
   // middlewares + main handler
   std::vector<path_handler> m_handlers;
 
-  impl(uv_stream_t *remote, std::unique_ptr<char[]> raw) : m_remote(remote), m_raw(std::move(raw)) {};
+  impl(uv_stream_t *remote, std::unique_ptr<char[]> raw) : m_remote(remote), m_raw(std::move(raw)), m_method() {};
   ~impl() = default;
 };
 

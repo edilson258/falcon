@@ -6,9 +6,8 @@
 #include <utility>
 #include <uv.h>
 
-#include "external/nlohmann/json.hpp"
-#include "include/fc.hpp"
-#include "req.hpp"
+#include "falcon.h"
+#include "request.h"
 
 namespace fc {
 

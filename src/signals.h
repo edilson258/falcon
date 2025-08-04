@@ -1,13 +1,13 @@
 #pragma once
 
+#include <csignal>
 #include <iostream>
-#include <signal.h>
 
 class signals {
 public:
   static void ignore_sigpipe() {
 #ifndef _WIN32
-    struct sigaction sa;
+    struct sigaction sa{};
     sa.sa_handler = SIG_IGN;
     sa.sa_flags = 0;
     if (sigemptyset(&sa.sa_mask) != 0 || sigaction(SIGPIPE, &sa, nullptr) != 0) {

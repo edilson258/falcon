@@ -2,16 +2,15 @@
 #include <filesystem>
 #include <string>
 
-#include "const.hpp"
-#include "debug.hpp"
-#include "http.hpp"
-#include "req.hpp"
-#include "res.hpp"
-#include "router.hpp"
+#include "const.h"
+#include "http.h"
+#include "llhttp.h"
+#include "request.h"
+#include "response.h"
+#include "router.h"
 #include "signals.h"
-#include "utils.hpp"
-
-#include "external/llhttp/llhttp.h"
+#include "spdlog/spdlog.h"
+#include "utils.h"
 
 #define FC_BACKLOG (128)
 #define MAX_REQ_LEN (1024 * 1024 * 5) // 5 MB
@@ -27,12 +26,12 @@ public:
 
   uv_loop_t *m_loop;
   uv_tcp_t m_host_sock;
-  struct sockaddr_in m_addr;
+  sockaddr_in m_addr;
 
   std::filesystem::path m_views;
   std::filesystem::path m_assets;
 
-  impl() : m_router(), m_http_parser(), m_loop(uv_default_loop()) {
+  impl() : m_http_parser(), m_loop(uv_default_loop()) {
     m_loop->data = this;
     uv_tcp_init(m_loop, &m_host_sock);
 
@@ -146,25 +145,28 @@ int app::listen(const std::string addr, std::function<void(const std::string &)>
   uv_ip4_addr(host.c_str(), std::stoi(port), &m_pimpl->m_addr);
   int result = uv_tcp_bind(&m_pimpl->m_host_sock, (const struct sockaddr *)&m_pimpl->m_addr, 0);
   if (result) {
-    debug::error("Fail to bind at %s, %s", addr.c_str(), uv_strerror(result));
+    spdlog::error("Failed to bind at {}, {}", addr, uv_strerror(result));
     return -1;
   }
   result = uv_listen((uv_stream_t *)&m_pimpl->m_host_sock, FC_BACKLOG, app::impl::on_connection);
   if (result) {
-    debug::error("Fail to listen at %s, %s", addr.c_str(), uv_strerror(result));
+    spdlog::error("Failed to listen at {}, {}", addr, uv_strerror(result));
     return -1;
   }
   if (call_back) call_back(host + ":" + port);
-  debug::info("Event loop spinned");
+  spdlog::info("Event loop launched");
   return uv_run(m_pimpl->m_loop, UV_RUN_DEFAULT);
 }
 
 void app::impl::on_connection(uv_stream_t *host, int status) {
-  if (status < 0) return debug::error("Fail to accept new connection, %s", uv_strerror(status));
-  uv_tcp_t *remote = new uv_tcp_t;
+  if (status < 0) {
+    return spdlog::error("Failed to accept new connection, {}", uv_strerror(status));
+  }
+  auto *remote = new uv_tcp_t;
   uv_tcp_init(host->loop, remote);
-  if (int result = uv_accept(host, (uv_stream_t *)remote); 0 != result)
-    return debug::error("Fail to accept new connection, %s", uv_strerror(result));
+  if (int result = uv_accept(host, (uv_stream_t *)remote); 0 != result) {
+    return spdlog::error("Fail to accept new connection, {}", uv_strerror(result));
+  }
   uv_read_start((uv_stream_t *)remote, app::impl::on_alloc_req_buf, app::impl::on_read_req_buf);
 }
 
@@ -178,7 +180,7 @@ void app::impl::on_read_req_buf(uv_stream_t *client, long nread, const uv_buf_t 
   uv_read_stop(client);
   if (nread < 0) {
     if (nread != UV_EOF) {
-      debug::error("Fail to read remote socket, %s", uv_strerror(nread));
+      spdlog::error("Fail to read remote socket, {}", uv_strerror(nread));
     }
     delete[] buf->base;
     uv_close((uv_handle_t *)client, app::impl::on_close_conn);
@@ -194,7 +196,7 @@ void app::impl::on_read_req_buf(uv_stream_t *client, long nread, const uv_buf_t 
 void app::impl::parse_http_request(request req) {
   enum llhttp_errno err = m_http_parser.parse(&req);
   if (HPE_OK != err) {
-    debug::error("Fail to parse http request, %s", llhttp_errno_name(err));
+    spdlog::error("Failed to parse http request, {}", llhttp_errno_name(err));
     return send_response(std::move(req), response::ok(status::BAD_REQUEST));
   }
   return match_request_to_handler(std::move(req));
@@ -217,7 +219,7 @@ void app::impl::try_serve_static_file(request req) {
   fs::path full_path = join_paths(m_assets, std::string(req.get_path()));
   if (full_path.string().starts_with(m_assets.string())) {
     auto res = response(new response::impl(status::OK, response_file(full_path.string())));
-    res.set_header("Content-Type", contype_from_ext(full_path.extension().string()));
+    res.set_header("Content-Type", content_type_from_ext(full_path.extension().string()));
     send_response_file(std::move(req), std::move(res));
   } else {
     send_response(std::move(req), response::ok(status::NOT_FOUND));
@@ -247,6 +249,8 @@ void app::impl::send_response_head(request &req, response &res) {
   auto header_len = snprintf(nullptr, 0, http_header_cfmt, (int)res.m_pimpl->m_status, statstr, headers);
   auto header_buf = new char[header_len + 1];
   snprintf(header_buf, header_len + 1, http_header_cfmt, (int)res.m_pimpl->m_status, statstr, headers);
+
+  spdlog::info("{}", header_buf);
 
   uv_buf_t write_buf = uv_buf_init(header_buf, header_len);
   uv_write_t *write_req = new uv_write_t;
@@ -362,7 +366,7 @@ void app::impl::on_read_file_chunk(uv_fs_t *read_req) {
     uv_fs_read(uv_default_loop(), next_read_req, ctx->m_fd, &next_read_buf, 1, -1, app::impl::on_read_file_chunk);
   } else {
     if (read_req->result < 0) {
-      debug::error("Fail to read file chunk, %s", uv_strerror(read_req->result));
+      spdlog::error("Failed to read file chunk, {}", uv_strerror(read_req->result));
     }
 
     static char *last_chunk = (char *)"0\r\n\r\n";
@@ -378,7 +382,7 @@ void app::impl::on_read_file_chunk(uv_fs_t *read_req) {
 
 void app::impl::on_write_buf(uv_write_t *req, int status) {
   if (status < 0) {
-    debug::error("Fail to write response chunk, %s", uv_strerror(status));
+    spdlog::error("Failed to write response chunk, {}", uv_strerror(status));
   }
   if (req->data) delete[] (char *)req->data;
   delete req;
@@ -391,7 +395,7 @@ void app::impl::on_write_and_close(uv_write_t *req, int status) {
 }
 
 void app::impl::on_close_conn(uv_handle_t *client) {
-  delete client;
+  // delete client;
 }
 
 } // namespace fc

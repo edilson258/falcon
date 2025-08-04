@@ -1,9 +1,9 @@
-#include <cstring>
+#include <algorithm>
 #include <string>
 
-#include "http.hpp"
-#include "include/fc.hpp"
-#include "res.hpp"
+#include "falcon.h"
+#include "http.h"
+#include "response.h"
 
 namespace fc {
 
@@ -26,8 +26,8 @@ response response::ok(status stats) {
   return res;
 }
 
-response response::json(nlohmann::json j, status status_) {
-  auto res = response(new response::impl(status_, j.dump()));
+response response::json(nlohmann::json j, status stats) {
+  auto res = response(new impl(stats, j.dump()));
   res.set_content_type("application/json");
   return res;
 }
@@ -38,22 +38,22 @@ response response::render(std::string path, status stats) {
   return res;
 }
 
-void response::set_status(status status_) {
+void response::set_status(const status status_) const {
   m_pimpl->m_status = status_;
 }
 
-void response::set_header(std::string key, std::string value) {
-  auto it = std::find_if(m_pimpl->m_headers.begin(), m_pimpl->m_headers.end(), [&](const auto &header) {
+void response::set_header(std::string key, const std::string &value) {
+  const auto it = std::ranges::find_if(m_pimpl->m_headers, [&](const auto &header) {
     return header.first == key;
   });
   if (it != m_pimpl->m_headers.end()) {
     it->second = value;
   } else {
-    m_pimpl->m_headers.push_back(std::make_pair(key, value));
+    m_pimpl->m_headers.emplace_back(key, value);
   }
 }
 
-void response::set_content_type(std::string content_type) {
+void response::set_content_type(const std::string &content_type) {
   set_header("Content-Type", content_type);
 }
 

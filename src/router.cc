@@ -8,10 +8,9 @@
 #include <utility>
 #include <vector>
 
-#include "include/fc.hpp"
-#include "req.hpp"
-#include "router.hpp"
-#include "src/debug.hpp"
+#include "falcon.h"
+#include "request.h"
+#include "router.h"
 
 namespace fc {
 
@@ -19,20 +18,20 @@ router::router(std::string base) : m_pimpl(new impl(std::move(base))) {};
 
 router::~router() { delete m_pimpl; }
 
-void router::get(const std::string path, path_handler handler) {
-  m_pimpl->m_routes.push_back(route(method::GET, path, handler));
+void router::get(const std::string &path, const path_handler &handler) const {
+  m_pimpl->m_routes.emplace_back(method::GET, path, handler);
 }
 
-void router::post(const std::string path, path_handler handler) {
-  m_pimpl->m_routes.push_back(route(method::POST, path, handler));
+void router::post(const std::string &path, const path_handler &handler) const {
+  m_pimpl->m_routes.emplace_back(method::POST, path, handler);
 }
 
-void router::put(const std::string path, path_handler handler) {
-  m_pimpl->m_routes.push_back(route(method::PUT, path, handler));
+void router::put(const std::string &path, const path_handler &handler) const {
+  m_pimpl->m_routes.emplace_back(method::PUT, path, handler);
 }
 
-void router::delet(const std::string path, path_handler handler) {
-  m_pimpl->m_routes.push_back(route(method::DELETE, path, handler));
+void router::delet(const std::string &path, const path_handler &handler) const {
+  m_pimpl->m_routes.emplace_back(method::DELETE, path, handler);
 }
 
 void router::patch(const std::string path, path_handler handler) {
@@ -56,7 +55,7 @@ void root_router::add(const method method_, const std::string path_, const path_
   handlers.insert(handlers.end(), middwares_.begin(), middwares_.end());
   auto payload = new route_payload(path_, handlers);
   if (NULL == m_tree.insert_routel((int)method_, payload->m_path.c_str(), payload->m_path.length(), (void *)payload)) {
-    debug::error("Fail to add route %s", payload->m_path.c_str());
+    // debug::error("Fail to add route %s", payload->m_path.c_str());
   }
 }
 
