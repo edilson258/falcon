@@ -23,17 +23,28 @@ fs::path join_paths(const std::string &b, const std::string &p) {
 }
 
 std::string content_type_from_ext(const std::string &ext) {
-  if (const auto it = CONTENT_TYPES.find(ext); it != CONTENT_TYPES.end()) return it->second;
+  if (const auto it = CONTENT_TYPES.find(ext); it != CONTENT_TYPES.end())
+    return it->second;
   return "application/octet-stream";
 }
 
 std::string fc::method_to_string(const method method_) {
   switch (method_) {
-  case method::GET: return "GET";
-  case method::POST: return "POST";
-  case method::PUT: return "PUT";
-  case method::PATCH: return "PATCH";
-  case method::DELETE: return "DELETE";
-  default: return "Unknown Http Method";
+  case method::GET:
+    return "GET";
+  case method::POST:
+    return "POST";
+  case method::PUT:
+    return "PUT";
+  case method::PATCH:
+    return "PATCH";
+  case method::DELETE:
+    return "DELETE";
+  case method::HEAD:
+    return "HEAD";
+  case method::OPTIONS:
+    return "OPTIONS";
+  default:
+    return "Unknown Http Method";
   }
 }

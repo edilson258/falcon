@@ -1,5 +1,7 @@
 #include <cstdio>
 #include <filesystem>
+#include <format>
+#include <iostream>
 #include <string>
 
 #include "const.h"
@@ -20,33 +22,32 @@ namespace fs = std::filesystem;
 namespace fc {
 
 struct app::impl {
-public:
   root_router m_router;
   http_parser m_http_parser;
 
   uv_loop_t *m_loop;
-  uv_tcp_t m_host_sock;
-  sockaddr_in m_addr;
+  uv_tcp_t m_host_sock{};
+  sockaddr_in m_addr{};
 
-  std::filesystem::path m_views;
-  std::filesystem::path m_assets;
+  fs::path m_views;
+  fs::path m_assets;
 
-  impl() : m_http_parser(), m_loop(uv_default_loop()) {
+  impl() : m_loop(uv_default_loop()) {
     m_loop->data = this;
     uv_tcp_init(m_loop, &m_host_sock);
 
-    m_views = std::filesystem::absolute("views/");
-    m_assets = std::filesystem::absolute("public/");
+    m_views = fs::absolute("views/");
+    m_assets = fs::absolute("public/");
   }
 
   void parse_http_request(request);
-  void match_request_to_handler(request);
+  void match_request_to_handler(request) const;
 
-  // reponse handlers
-  void try_serve_static_file(request);
-  void send_response(request, response);
-  void send_response_file(request, response);
-  static void send_response_head(request &, response &);
+  // response handlers
+  void try_serve_static_file(request) const;
+  void send_response(request, response) const;
+  void send_response_file(request, response) const;
+  static void send_response_head(const request &, const response &);
   static void send_response_body(request, response);
   static void send_response_file_error(request, response);
 
@@ -55,38 +56,39 @@ public:
   static void on_open_file(uv_fs_t *);
   static void on_stat_file(uv_fs_t *);
   static void on_read_file_chunk(uv_fs_t *);
-  static void on_connection(uv_stream_t *server, int status);
+  static void on_connection(uv_stream_t *host, int status);
   static void on_write_buf(uv_write_t *req, int status);
   static void on_write_and_close(uv_write_t *req, int status);
-  static void on_alloc_req_buf(uv_handle_t *client, size_t size, uv_buf_t *buf);
-  static void on_read_req_buf(uv_stream_t *client, long nread, const uv_buf_t *buf);
+  static void on_alloc_req_buf(uv_handle_t *client, size_t len, uv_buf_t *buf);
+  static void on_read_req_buf(uv_stream_t *client, long nread,
+                              const uv_buf_t *buf);
 
-  void add_route(method, std::string, path_handler, const std::vector<path_handler> &);
+  void add_route(method, std::string, path_handler,
+                 const std::vector<path_handler> &);
 };
 
-struct send_file_ctx {
-public:
+struct file_sender {
   int m_fd;
   uv_stream_t *m_remote;
-  char m_chunk[64 * 1024]; // 64KB
+  char m_chunk[64 * 1024]{}; // 64KB
 
   std::optional<request> m_req;
   std::optional<response> m_res;
 
-  send_file_ctx(int fd, uv_stream_t *sock, request req, response res) : m_fd(fd), m_remote(sock), m_req(std::move(req)), m_res(std::move(res)) {
+  file_sender(const int fd, uv_stream_t *sock, request req, response res)
+      : m_fd(fd), m_remote(sock), m_req(std::move(req)), m_res(std::move(res)) {
     reset_chunk();
   };
 
-  ~send_file_ctx() {
-    if (m_fd != -1) {
-      uv_fs_t close_req;
-      uv_fs_close(uv_default_loop(), &close_req, m_fd, nullptr);
+  ~file_sender() {
+    if (m_fd == -1) {
+      return;
     }
+    uv_fs_t close_req;
+    uv_fs_close(uv_default_loop(), &close_req, m_fd, [](uv_fs_t *req_) {});
   }
 
-  void reset_chunk() {
-    std::memset(m_chunk, 0, sizeof(m_chunk));
-  }
+  void reset_chunk() { std::memset(m_chunk, 0, sizeof(m_chunk)); }
 };
 
 app::app() {
@@ -96,16 +98,17 @@ app::app() {
 
 app::~app() { delete m_pimpl; }
 
-void app::get(const std::string path, path_handler handler) {
-  m_pimpl->add_route(method::GET, path, handler, {});
+void app::get(const std::string &path, path_handler handler) const {
+  m_pimpl->add_route(method::GET, path, std::move(handler), {});
 }
 
-void app::post(const std::string path, path_handler handler) {
+auto app::post(const std::string &path, const path_handler &handler) const
+    -> void {
   m_pimpl->add_route(method::POST, path, handler, {});
 }
 
-void app::put(const std::string path, path_handler handler) {
-  m_pimpl->add_route(method::PUT, path, handler, {});
+void app::put(const std::string &path, path_handler handler) const {
+  m_pimpl->add_route(method::PUT, path, std::move(handler), {});
 }
 
 void app::delet(const std::string path, path_handler handler) {
@@ -118,7 +121,8 @@ void app::patch(const std::string path, path_handler handler) {
 
 void app::use(const router &router) {
   for (auto &r : router.m_pimpl->m_routes) {
-    m_pimpl->add_route(r.m_method, router.m_pimpl->m_base + r.m_path, r.m_handler, router.m_pimpl->m_middlewares);
+    m_pimpl->add_route(r.m_method, router.m_pimpl->m_base + r.m_path,
+                       r.m_handler, router.m_pimpl->m_middlewares);
   }
 }
 
@@ -130,12 +134,15 @@ void app::set_assets_dir(const std::string dir_path) {
   m_pimpl->m_assets = dir_path;
 }
 
-void app::impl::add_route(method method, std::string path, path_handler handler, const std::vector<path_handler> &middwares) {
-  if (path.length() < 1 || path.at(0) != '/') path.insert(0, "/");
+void app::impl::add_route(method method, std::string path, path_handler handler,
+                          const std::vector<path_handler> &middwares) {
+  if (path.length() < 1 || path.at(0) != '/')
+    path.insert(0, "/");
   m_router.add(method, path, handler, middwares);
 }
 
-int app::listen(const std::string addr, std::function<void(const std::string &)> call_back) {
+int app::listen(const std::string addr,
+                std::function<void(const std::string &)> call_back) {
   char *errstr;
   int err = m_pimpl->m_router.m_tree.compile(&errstr);
   if (err != 0) {
@@ -143,40 +150,51 @@ int app::listen(const std::string addr, std::function<void(const std::string &)>
   }
   auto [host, port] = split_address(addr);
   uv_ip4_addr(host.c_str(), std::stoi(port), &m_pimpl->m_addr);
-  int result = uv_tcp_bind(&m_pimpl->m_host_sock, (const struct sockaddr *)&m_pimpl->m_addr, 0);
+  int result = uv_tcp_bind(
+      &m_pimpl->m_host_sock,
+      reinterpret_cast<const struct sockaddr *>(&m_pimpl->m_addr), 0);
   if (result) {
     spdlog::error("Failed to bind at {}, {}", addr, uv_strerror(result));
     return -1;
   }
-  result = uv_listen((uv_stream_t *)&m_pimpl->m_host_sock, FC_BACKLOG, app::impl::on_connection);
+  result = uv_listen(reinterpret_cast<uv_stream_t *>(&m_pimpl->m_host_sock),
+                     FC_BACKLOG, impl::on_connection);
   if (result) {
     spdlog::error("Failed to listen at {}, {}", addr, uv_strerror(result));
     return -1;
   }
-  if (call_back) call_back(host + ":" + port);
+  if (call_back)
+    call_back(host + ":" + port);
   spdlog::info("Event loop launched");
   return uv_run(m_pimpl->m_loop, UV_RUN_DEFAULT);
 }
 
-void app::impl::on_connection(uv_stream_t *host, int status) {
+void app::impl::on_connection(uv_stream_t *host, const int status) {
   if (status < 0) {
-    return spdlog::error("Failed to accept new connection, {}", uv_strerror(status));
+    return spdlog::error("Failed to accept new connection, {}",
+                         uv_strerror(status));
   }
   auto *remote = new uv_tcp_t;
   uv_tcp_init(host->loop, remote);
-  if (int result = uv_accept(host, (uv_stream_t *)remote); 0 != result) {
-    return spdlog::error("Fail to accept new connection, {}", uv_strerror(result));
+  if (const int result =
+          uv_accept(host, reinterpret_cast<uv_stream_t *>(remote));
+      0 != result) {
+    spdlog::error("Fail to accept new connection, {}", uv_strerror(result));
+  } else {
+    uv_read_start(reinterpret_cast<uv_stream_t *>(remote), on_alloc_req_buf,
+                  on_read_req_buf);
   }
-  uv_read_start((uv_stream_t *)remote, app::impl::on_alloc_req_buf, app::impl::on_read_req_buf);
 }
 
-void app::impl::on_alloc_req_buf(uv_handle_t *client, size_t len, uv_buf_t *buf) {
+void app::impl::on_alloc_req_buf(uv_handle_t *client, size_t len,
+                                 uv_buf_t *buf) {
   buf->len = len;
   buf->base = new char[len];
   std::memset(buf->base, 0, len);
 }
 
-void app::impl::on_read_req_buf(uv_stream_t *client, long nread, const uv_buf_t *buf) {
+void app::impl::on_read_req_buf(uv_stream_t *client, long nread,
+                                const uv_buf_t *buf) {
   uv_read_stop(client);
   if (nread < 0) {
     if (nread != UV_EOF) {
@@ -202,115 +220,107 @@ void app::impl::parse_http_request(request req) {
   return match_request_to_handler(std::move(req));
 }
 
-void app::impl::match_request_to_handler(request req) {
+void app::impl::match_request_to_handler(request req) const {
   if (m_router.match(req)) {
     response res = req.next();
-    return send_response(std::move(req), std::move(res));
+    send_response(std::move(req), std::move(res));
+  } else if (method::GET == req.m_pimpl->m_method) {
+    try_serve_static_file(std::move(req));
+  } else {
+    send_response(std::move(req), response::ok(status::NOT_FOUND));
   }
-
-  if (method::GET == req.m_pimpl->m_method) {
-    return try_serve_static_file(std::move(req));
-  }
-
-  send_response(std::move(req), response::ok(status::NOT_FOUND));
 }
 
-void app::impl::try_serve_static_file(request req) {
-  fs::path full_path = join_paths(m_assets, std::string(req.get_path()));
-  if (full_path.string().starts_with(m_assets.string())) {
-    auto res = response(new response::impl(status::OK, response_file(full_path.string())));
-    res.set_header("Content-Type", content_type_from_ext(full_path.extension().string()));
+void app::impl::try_serve_static_file(request req) const {
+  const auto path = join_paths(m_assets, std::string(req.get_path()));
+  if (path.string().starts_with(m_assets.string())) {
+    response_file file{path, file_loader::External};
+    auto res = response(new response::impl(status::OK, std::move(file)));
     send_response_file(std::move(req), std::move(res));
   } else {
     send_response(std::move(req), response::ok(status::NOT_FOUND));
   }
 }
 
-void app::impl::send_response_head(request &req, response &res) {
-  size_t headers_len = 0;
-  size_t headers_offs = 0;
-  for (const auto &h : res.m_pimpl->m_headers) {
-    headers_len += h.first.length() + h.second.length() + 4;
+void app::impl::send_response_head(const request &req, const response &res) {
+  std::string headers;
+  for (const auto &[key, value] : res.m_pimpl->m_headers) {
+    headers.append(key);
+    headers.append(": ");
+    headers.append(value);
+    headers.append("\r\n");
   }
-  char headers[headers_len + 1];
-  for (const auto &h : res.m_pimpl->m_headers) {
-    std::memcpy(headers + headers_offs, h.first.data(), h.first.length());
-    headers_offs += h.first.length();
-    std::memcpy(headers + headers_offs, ": ", 2);
-    headers_offs += 2;
-    std::memcpy(headers + headers_offs, h.second.data(), h.second.length());
-    headers_offs += h.second.length();
-    std::memcpy(headers + headers_offs, "\r\n", 2);
-    headers_offs += 2;
-  }
-  headers[headers_offs] = '\0';
 
-  auto statstr = status_to_string(res.m_pimpl->m_status);
-  auto header_len = snprintf(nullptr, 0, http_header_cfmt, (int)res.m_pimpl->m_status, statstr, headers);
-  auto header_buf = new char[header_len + 1];
-  snprintf(header_buf, header_len + 1, http_header_cfmt, (int)res.m_pimpl->m_status, statstr, headers);
+  res.m_pimpl->m_headers_buf = std::format(
+      header_fmt,
+      static_cast<int>(res.m_pimpl->m_status),
+      status_to_string(res.m_pimpl->m_status),
+      headers);
 
-  spdlog::info("{}", header_buf);
-
-  uv_buf_t write_buf = uv_buf_init(header_buf, header_len);
-  uv_write_t *write_req = new uv_write_t;
-  write_req->data = header_buf;
-  uv_write(write_req, req.m_pimpl->m_remote, &write_buf, 1, app::impl::on_write_buf);
+  const auto write_req = new uv_write_t;
+  write_req->data = nullptr;
+  auto *buffer_ptr = const_cast<char *>(res.m_pimpl->m_headers_buf.c_str());
+  const uv_buf_t write_buf = uv_buf_init(buffer_ptr, res.m_pimpl->m_headers_buf.length());
+  uv_write(write_req, req.m_pimpl->m_remote, &write_buf, 1, on_write_buf);
 }
 
-void app::impl::send_response_body(request req, response res) {
-  auto content_len = res.m_pimpl->m_body.length();
-  auto content = new char[content_len + 1];
-  std::memcpy(content, res.m_pimpl->m_body.data(), content_len);
-  content[content_len] = '\0';
+void app::impl::send_response_body(request req_, response res_) {
+  const auto &text_response = std::get<response_text>(res_.m_pimpl->m_payload);
+  const auto content = new char[text_response.length() + 1];
+  strncpy(content, text_response.c_str(), text_response.length());
+  content[text_response.length()] = '\0';
 
-  auto uv_buf = uv_buf_init(content, content_len);
-  auto write_req = new uv_write_t;
+  const auto uv_buf = uv_buf_init(content, text_response.length());
+  const auto write_req = new uv_write_t;
   write_req->data = content;
-  uv_write(write_req, req.m_pimpl->m_remote, &uv_buf, 1, app::impl::on_write_and_close);
+  uv_write(write_req, req_.m_pimpl->m_remote, &uv_buf, 1, on_write_and_close);
 };
 
-void app::impl::send_response(request req, response res) {
-  if (res.m_pimpl->m_isfile) {
-    return send_response_file(std::move(req), std::move(res));
+void app::impl::send_response(request req, response res) const {
+  if (res.m_pimpl->is_file()) {
+    send_response_file(std::move(req), std::move(res));
+  } else {
+    send_response_head(req, res);
+    send_response_body(std::move(req), std::move(res));
   }
-  res.set_header("Content-Len", std::to_string(res.m_pimpl->m_body.length()));
-  app::impl::send_response_head(req, res);
-  app::impl::send_response_body(std::move(req), std::move(res));
 }
 
-void app::impl::send_response_file(request req, response res) {
-  response_file &file = res.m_pimpl->m_file;
+void app::impl::send_response_file(request req, response res) const {
+  auto &file = std::get<response_file>(res.m_pimpl->m_payload);
 
-  if (file.m_isview) {
-    file.m_path = join_paths(m_views, res.m_pimpl->m_file.m_path).string();
+  if (file.m_loader == file_loader::Render) {
+    file.m_path = join_paths(m_views, file.m_path).string();
   }
 
-  uv_fs_t *open_req = new uv_fs_t;
+  // ReSharper disable once CppDFAMemoryLeak
+  auto *open_req = new uv_fs_t;
   const char *path = file.m_path.c_str();
   uv_stream_t *remote = req.m_pimpl->m_remote;
-  open_req->data = new send_file_ctx(-1, remote, std::move(req), std::move(res));
-  uv_fs_open(uv_default_loop(), open_req, path, O_RDONLY, 0, app::impl::on_open_file);
+  // ReSharper disable once CppDFAMemoryLeak
+  auto *ctx = new file_sender(-1, remote, std::move(req), std::move(res));
+  open_req->data = ctx;
+  uv_fs_open(uv_default_loop(), open_req, path, O_RDONLY, 0, on_open_file);
 }
 
 void app::impl::on_open_file(uv_fs_t *open_req) {
-  auto ctx = (send_file_ctx *)open_req->data;
-  ctx->m_fd = open_req->result;
+  auto *ctx = static_cast<file_sender *>(open_req->data);
 
   if (open_req->result < 0) {
-    send_response_file_error(std::move(ctx->m_req.value()), std::move(ctx->m_res.value()));
+    send_response_file_error(std::move(ctx->m_req.value()),
+                             std::move(ctx->m_res.value()));
     delete ctx;
   } else {
-    uv_fs_t *stat_req = new uv_fs_t;
+    ctx->m_fd = open_req->result;
+    const auto stat_req = new uv_fs_t;
     stat_req->data = ctx;
-    uv_fs_fstat(uv_default_loop(), stat_req, open_req->result, app::impl::on_stat_file);
+    uv_fs_fstat(uv_default_loop(), stat_req, open_req->result, on_stat_file);
   }
 
   delete open_req;
 }
 
 void app::impl::on_stat_file(uv_fs_t *stat_req) {
-  auto ctx = (send_file_ctx *)stat_req->data;
+  auto ctx = (file_sender *)stat_req->data;
 
   if (stat_req->result >= 0 && S_ISREG(stat_req->statbuf.st_mode)) {
     ctx->m_res.value().set_header("Transfer-Encoding", "chunked");
@@ -322,80 +332,92 @@ void app::impl::on_stat_file(uv_fs_t *stat_req) {
     uv_fs_t *read_req = new uv_fs_t;
     read_req->data = ctx;
     uv_buf_t read_buf = uv_buf_init(ctx->m_chunk, sizeof(ctx->m_chunk));
-    uv_fs_read(uv_default_loop(), read_req, ctx->m_fd, &read_buf, 1, -1, app::impl::on_read_file_chunk);
+    uv_fs_read(uv_default_loop(), read_req, ctx->m_fd, &read_buf, 1, -1,
+               on_read_file_chunk);
   } else {
-    send_response_file_error(std::move(ctx->m_req.value()), std::move(ctx->m_res.value()));
+    send_response_file_error(std::move(ctx->m_req.value()),
+                             std::move(ctx->m_res.value()));
     delete ctx;
   }
 
   delete stat_req;
 }
 
-void app::impl::send_response_file_error(request req, response res) {
-  if (res.m_pimpl->m_file.m_isview) {
-    res.set_status(status::INTERNAL_SERVER_ERROR);
-    res.m_pimpl->m_body = "Internal server error";
+void app::impl::send_response_file_error(request req_, response res_) {
+  const auto &file = std::get<response_file>(res_.m_pimpl->m_payload);
+
+  status status;
+  if (file.m_loader == file_loader::External) {
+    status = status::NOT_FOUND;
   } else {
-    res.set_status(status::NOT_FOUND);
-    res.m_pimpl->m_body = "Not found";
+    status = status::INTERNAL_SERVER_ERROR;
   }
 
-  res.set_header("Content-Len", std::to_string(res.m_pimpl->m_body.length()));
-  app::impl::send_response_head(req, res);
-  app::impl::send_response_body(std::move(req), std::move(res));
+  auto err_res = response::ok(status);
+  send_response_head(req_, err_res);
+  send_response_body(std::move(req_), std::move(err_res));
 }
 
 void app::impl::on_read_file_chunk(uv_fs_t *read_req) {
-  auto *ctx = (send_file_ctx *)read_req->data;
+  auto *ctx = (file_sender *)read_req->data;
 
   if (read_req->result > 0) {
-    size_t chunk_len = snprintf(nullptr, 0, "%x\r\n%s\r\n", (unsigned int)read_req->result, ctx->m_chunk);
-    char *chunk_buf = new char[chunk_len + 1];
-    snprintf(chunk_buf, chunk_len + 1, "%x\r\n%s\r\n", (unsigned int)read_req->result, ctx->m_chunk);
+    size_t chunk_len =
+        snprintf(nullptr, 0, "%x\r\n%s\r\n",
+                 static_cast<unsigned int>(read_req->result), ctx->m_chunk);
+    const auto chunk_buf = new char[chunk_len + 1];
+    snprintf(chunk_buf, chunk_len + 1, "%x\r\n%s\r\n",
+             static_cast<unsigned int>(read_req->result), ctx->m_chunk);
 
-    uv_buf_t write_buf = uv_buf_init(chunk_buf, chunk_len);
-    uv_write_t *write_req = new uv_write_t;
+    const uv_buf_t write_buf = uv_buf_init(chunk_buf, chunk_len);
+    auto *write_req = new uv_write_t;
     write_req->data = chunk_buf;
-    uv_write(write_req, ctx->m_remote, &write_buf, 1, app::impl::on_write_buf);
+    uv_write(write_req, ctx->m_remote, &write_buf, 1,
+             reinterpret_cast<uv_write_cb>(on_write_buf));
 
     // read next chunk
     ctx->reset_chunk();
-    uv_fs_t *next_read_req = new uv_fs_t;
+    auto *next_read_req = new uv_fs_t;
     next_read_req->data = ctx;
     uv_buf_t next_read_buf = uv_buf_init(ctx->m_chunk, sizeof(ctx->m_chunk));
-    uv_fs_read(uv_default_loop(), next_read_req, ctx->m_fd, &next_read_buf, 1, -1, app::impl::on_read_file_chunk);
+    uv_fs_read(uv_default_loop(), next_read_req, ctx->m_fd, &next_read_buf, 1,
+               -1, on_read_file_chunk);
   } else {
     if (read_req->result < 0) {
-      spdlog::error("Failed to read file chunk, {}", uv_strerror(read_req->result));
+      spdlog::error("Failed to read file chunk, {}",
+                    uv_strerror(read_req->result));
     }
 
-    static char *last_chunk = (char *)"0\r\n\r\n";
+    static char *last_chunk = static_cast<char *>("0\r\n\r\n");
     auto last_chunk_buf = uv_buf_init(last_chunk, strlen(last_chunk));
-    uv_write_t *write_req = new uv_write_t;
+    auto *write_req = new uv_write_t;
     write_req->data = nullptr;
-    uv_write(write_req, ctx->m_remote, &last_chunk_buf, 1, app::impl::on_write_and_close);
+    uv_write(write_req, ctx->m_remote, &last_chunk_buf, 1, on_write_and_close);
 
     delete ctx;
   }
   delete read_req;
 }
 
-void app::impl::on_write_buf(uv_write_t *req, int status) {
+// ReSharper disable once CppParameterMayBeConstPtrOrRef
+void app::impl::on_write_buf(uv_write_t *req, const int status) {
   if (status < 0) {
-    spdlog::error("Failed to write response chunk, {}", uv_strerror(status));
+    spdlog::error("Failed to write on remote, {}", uv_strerror(status));
   }
-  if (req->data) delete[] (char *)req->data;
+  if (req->data) {
+    delete[] static_cast<char *>(req->data);
+  }
   delete req;
 }
 
-void app::impl::on_write_and_close(uv_write_t *req, int status) {
-  auto remote = (uv_handle_t *)req->handle;
-  app::impl::on_write_buf(req, status);
-  uv_close(remote, app::impl::on_close_conn);
+void app::impl::on_write_and_close(uv_write_t *req, const int status) {
+  const auto remote = reinterpret_cast<uv_handle_t *>(req->handle);
+  on_write_buf(req, status);
+  uv_close(remote, on_close_conn);
 }
 
 void app::impl::on_close_conn(uv_handle_t *client) {
-  // delete client;
+  delete reinterpret_cast<uv_tcp_t *>(client);
 }
 
 } // namespace fc

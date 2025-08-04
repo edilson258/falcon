@@ -29,8 +29,9 @@ struct root_router {
 
   root_router() : m_tree(10) {}
 
-  void add(method, std::string, path_handler, std::vector<path_handler>);
-  bool match(request &) const;
+  void add(method, const std::string &, const path_handler &,
+           const std::vector<path_handler> &);
+  bool match(const request &) const;
 };
 
 } // namespace fc

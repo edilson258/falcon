@@ -85,13 +85,12 @@ enum class status {
 };
 
 struct response {
-public:
-  static response ok(status stats = status::OK);
-  static response json(nlohmann::json, status stats = status::OK);
-  static response render(std::string path, status stats = status::OK);
+  static response ok(status status_ = status::OK);
+  static response render(std::string path_, status status_ = status::OK);
+  static response json(const nlohmann::json &, status status_ = status::OK);
 
   void set_status(status) const;
-  status get_status() const;
+  [[nodiscard]] status get_status() const;
   void set_content_type(const std::string &);
   void set_header(std::string, const std::string &);
 
@@ -105,7 +104,7 @@ private:
   struct impl;
   impl *m_pimpl;
 
-  response(struct impl *pimpl) : m_pimpl(pimpl) {};
+  explicit response(impl *pimpl) : m_pimpl(pimpl) {};
 
   friend struct app;
 };
@@ -142,16 +141,15 @@ private:
 using path_handler = std::function<response(request &)>;
 
 struct router {
-public:
   void get(const std::string &, const path_handler &) const;
   void post(const std::string &, const path_handler &) const;
   void put(const std::string &, const path_handler &) const;
-  void delet(const std::string &path, const path_handler &) const;
-  void patch(const std::string, path_handler);
+  void delet(const std::string &, const path_handler &) const;
+  void patch(const std::string &, const path_handler &) const;
 
-  router(std::string base);
+  explicit router(std::string base);
 
-  void use(path_handler middleware);
+  void use(const path_handler &middleware) const;
 
   ~router();
   router(const router &other) = delete;
@@ -171,9 +169,9 @@ public:
   app();
   ~app();
 
-  void get(const std::string, path_handler);
-  void post(const std::string, path_handler);
-  void put(const std::string, path_handler);
+  void get(const std::string &, path_handler) const;
+  void post(const std::string &, const path_handler &) const;
+  void put(const std::string &, path_handler) const;
   void delet(const std::string, path_handler);
   void patch(const std::string, path_handler);
 
@@ -182,7 +180,8 @@ public:
 
   void use(const router &);
 
-  int listen(const std::string, std::function<void(const std::string &addr)> = nullptr);
+  int listen(const std::string,
+             std::function<void(const std::string &addr)> = nullptr);
 
 private:
   struct impl;

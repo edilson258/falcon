@@ -56,6 +56,7 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GN
             -Wswitch-enum
             -Wconversion
             -Wdeprecated
+            -Wformat
 
             $<$<CONFIG:Debug>:-O0 -g -fsanitize=address -fsanitize=undefined>
             $<$<CONFIG:Release>:-O3 -DNDEBUG -flto>

@@ -1,8 +1,3 @@
-#include <cassert>
-#include <cstddef>
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -11,6 +6,7 @@
 #include "falcon.h"
 #include "request.h"
 #include "router.h"
+#include "spdlog/spdlog.h"
 
 namespace fc {
 
@@ -34,43 +30,56 @@ void router::delet(const std::string &path, const path_handler &handler) const {
   m_pimpl->m_routes.emplace_back(method::DELETE, path, handler);
 }
 
-void router::patch(const std::string path, path_handler handler) {
+void router::patch(const std::string &path, const path_handler &handler) const {
   m_pimpl->m_routes.push_back(route(method::PATCH, path, handler));
 }
 
-void router::use(path_handler middleware) {
+void router::use(const path_handler &middleware) const {
   m_pimpl->m_middlewares.insert(m_pimpl->m_middlewares.begin(), middleware);
 }
 
 struct route_payload {
-public:
   std::string m_path;
   std::vector<path_handler> m_handlers;
 
-  route_payload(std::string path_, std::vector<path_handler> handlers_) : m_path(path_), m_handlers(handlers_) {}
+  route_payload(const std::string &path_,
+                const std::vector<path_handler> &handlers_)
+      : m_path(path_), m_handlers(handlers_) {}
 };
 
-void root_router::add(const method method_, const std::string path_, const path_handler handler_, const std::vector<path_handler> middwares_) {
-  std::vector<path_handler> handlers = {handler_};
-  handlers.insert(handlers.end(), middwares_.begin(), middwares_.end());
-  auto payload = new route_payload(path_, handlers);
-  if (NULL == m_tree.insert_routel((int)method_, payload->m_path.c_str(), payload->m_path.length(), (void *)payload)) {
-    // debug::error("Fail to add route %s", payload->m_path.c_str());
+auto root_router::add(const method method_, const std::string &path_,
+                      const path_handler &handler_,
+                      const std::vector<path_handler> &middlewares_) -> void {
+  std::vector handlers = {handler_};
+  handlers.insert(handlers.end(), middlewares_.begin(), middlewares_.end());
+  // ReSharper disable once CppDFAMemoryLeak
+  const auto payload = new route_payload(path_, handlers);
+  if (nullptr ==
+      m_tree.insert_routel(static_cast<int>(method_), payload->m_path.c_str(),
+                           payload->m_path.length(), (void *)payload)) {
+    spdlog::error("Fail to add route {}", payload->m_path.c_str());
   }
 }
 
-bool root_router::match(request &req) const {
-  r3::MatchEntry entry(req.m_pimpl->m_path.data(), req.m_pimpl->m_path.length());
+bool root_router::match(const request &req) const {
+  r3::MatchEntry entry(req.m_pimpl->m_path.data(),
+                       req.m_pimpl->m_path.length());
   entry.set_request_method(static_cast<int>(req.m_pimpl->m_method));
-  if (r3::Route matched_route = m_tree.match_route(entry); !matched_route.is_null()) {
-    auto payload = reinterpret_cast<route_payload *>(matched_route.data());
+  const r3::Route matched_route = m_tree.match_route(entry);
+  if (!matched_route.is_null()) {
+    const auto payload = static_cast<route_payload *>(matched_route.data());
     // std::vector<std::pair<std::string_view, std::string_view>> m_params;
     for (size_t i = 0; i < matched_route.get()->slugs.size; i++) {
-      req.m_pimpl->m_params.push_back(std::make_pair<std::string_view, std::string_view>(
-          std::string_view(entry.get()->vars.slugs.entries[i].base, entry.get()->vars.slugs.entries[i].len),
-          std::string_view(entry.get()->vars.tokens.entries[i].base, entry.get()->vars.tokens.entries[i].len)));
+      req.m_pimpl->m_params.push_back(
+          std::make_pair<std::string_view, std::string_view>(
+              std::string_view(entry.get()->vars.slugs.entries[i].base,
+                               entry.get()->vars.slugs.entries[i].len),
+              std::string_view(entry.get()->vars.tokens.entries[i].base,
+                               entry.get()->vars.tokens.entries[i].len)));
     }
-    req.m_pimpl->m_handlers.insert(req.m_pimpl->m_handlers.end(), payload->m_handlers.begin(), payload->m_handlers.end());
+    req.m_pimpl->m_handlers.insert(req.m_pimpl->m_handlers.end(),
+                                   payload->m_handlers.begin(),
+                                   payload->m_handlers.end());
     return true;
   }
   return false;
