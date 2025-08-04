@@ -6,6 +6,7 @@
 #include <string_view>
 
 #include "json.hpp"
+#include "spdlog/spdlog.h"
 
 namespace fc {
 
@@ -110,7 +111,6 @@ private:
 };
 
 struct request {
-public:
   response next();
 
   nlohmann::json json();
@@ -131,7 +131,7 @@ private:
   struct impl;
   impl *m_pimpl;
 
-  request(struct impl *impl) : m_pimpl(impl) {}
+  explicit request(impl *impl) : m_pimpl(impl) {}
 
   friend struct app;
   friend struct http_parser;
@@ -154,7 +154,10 @@ struct router {
   ~router();
   router(const router &other) = delete;
   router &operator=(const router &other) = delete;
-  router(router &&other) noexcept;
+  router(router &&other) noexcept {
+    this->m_pimpl = other.m_pimpl;
+    other.m_pimpl = nullptr;
+  };
   router &operator=(router &&other) = delete;
 
 private:
@@ -165,23 +168,23 @@ private:
 };
 
 struct app {
-public:
   app();
   ~app();
 
-  void get(const std::string &, path_handler) const;
+  void get(const std::string &, const path_handler &) const;
   void post(const std::string &, const path_handler &) const;
-  void put(const std::string &, path_handler) const;
-  void delet(const std::string, path_handler);
-  void patch(const std::string, path_handler);
+  void put(const std::string &, const path_handler &) const;
+  void delet(const std::string &, const path_handler &) const;
+  void patch(const std::string &, const path_handler &) const;
 
-  void set_views_dir(const std::string);
-  void set_assets_dir(const std::string);
+  void set_views_dir(const std::string &) const;
+  void set_assets_dir(const std::string &) const;
 
-  void use(const router &);
+  void use(const router &) const;
 
-  int listen(const std::string,
-             std::function<void(const std::string &addr)> = nullptr);
+  int listen(const std::string &, const std::function<void(const std::string &addr)> & = [](const std::string &addr) {
+    // Some fancy message
+    spdlog::info("Event loop launched at (http://{})", addr); }) const;
 
 private:
   struct impl;

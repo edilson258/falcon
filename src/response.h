@@ -39,13 +39,9 @@ struct response::impl {
   status m_status;
   heads_t m_headers{};
 
-  // buffers to be filled later
-  std::string m_body_buf{};
-  std::string m_headers_buf{};
-
   std::variant<response_text, response_file> m_payload;
 
-  impl(const status status_, response_text text_, heads_t headers_ = {}) {
+  impl(const status status_, response_text text_, const heads_t &headers_ = {}) {
     m_status = status_;
     m_payload.emplace<response_text>(std::move(text_));
 
@@ -54,9 +50,10 @@ struct response::impl {
     }
 
     try_set_header("Content-Type", "text/plain");
+    try_set_header("Content-Len", std::to_string(text_.length()));
   };
 
-  impl(const status status_, response_file file_, heads_t headers_ = {}) {
+  impl(const status status_, response_file file_, const heads_t &headers_ = {}) {
     m_status = status_;
     m_payload.emplace<response_file>(std::move(file_));
 
@@ -91,7 +88,7 @@ struct response::impl {
   std::optional<head_t *> find_header(const std::string &key) {
     const auto it = std::ranges::find_if(
         m_headers, [&](const auto &header) { return header.first == key; });
-    return it == m_headers.end() ? std::nullopt : std::optional{&(*it)};
+    return it == m_headers.end() ? std::nullopt : std::optional{&*it};
   }
 };
 
