@@ -42,7 +42,7 @@ target_include_directories(falcon
 #set_target_properties(falcon PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    target_compile_options(falcon PRIVATE
+    target_compile_options(falcon PUBLIC
             -Wall
             -Wextra
             -Wpedantic
@@ -61,7 +61,7 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GN
             $<$<CONFIG:Debug>:-O0 -g -fsanitize=address -fsanitize=undefined>
             $<$<CONFIG:Release>:-O3 -DNDEBUG -flto>
     )
-    target_link_options(falcon PRIVATE
+    target_link_options(falcon PUBLIC
             $<$<CONFIG:Debug>:-fsanitize=address -fsanitize=undefined>
             $<$<CONFIG:Release>:-flto>
     )
@@ -80,3 +80,6 @@ else ()
 endif ()
 
 add_subdirectory(examples)
+
+enable_testing()
+add_subdirectory(tests)

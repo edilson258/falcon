@@ -10,3 +10,6 @@
 [submodule "deps/nljson"]
 	path = deps/nljson
 	url = https://github.com/nlohmann/json.git
+[submodule "tests/gtest"]
+	path = tests/gtest
+	url = https://github.com/google/googletest.git
