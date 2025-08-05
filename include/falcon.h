@@ -9,7 +9,6 @@
 #include "spdlog/spdlog.h"
 
 namespace fc {
-
 enum class method {
   GET = 2,
   POST = 2 << 1,
@@ -146,18 +145,17 @@ struct router {
   void put(const std::string &, const path_handler &) const;
   void delet(const std::string &, const path_handler &) const;
   void patch(const std::string &, const path_handler &) const;
+  void head(const std::string &, const path_handler &) const;
+  void options(const std::string &, const path_handler &) const;
 
-  explicit router(std::string base);
+  explicit router(std::string base_);
 
   void use(const path_handler &middleware) const;
 
   ~router();
   router(const router &other) = delete;
   router &operator=(const router &other) = delete;
-  router(router &&other) noexcept {
-    this->m_pimpl = other.m_pimpl;
-    other.m_pimpl = nullptr;
-  };
+  router(router &&other) noexcept;
   router &operator=(router &&other) = delete;
 
 private:
@@ -182,9 +180,10 @@ struct app {
 
   void use(const router &) const;
 
-  int listen(const std::string &, const std::function<void(const std::string &addr)> & = [](const std::string &addr) {
-    // Some fancy message
-    spdlog::info("Event loop launched at (http://{})", addr); }) const;
+  int listen(
+      const std::string &, const std::function<void(const std::string &addr)> & = [](const std::string &addr) {
+        spdlog::info("Event loop launched at (http://{})", addr);
+      }) const;
 
 private:
   struct impl;
@@ -192,5 +191,4 @@ private:
 };
 
 std::string method_to_string(method);
-
 } // namespace fc

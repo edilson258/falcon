@@ -4,6 +4,7 @@
 #include "utils.h"
 
 #include <filesystem>
+#include <string>
 #include <variant>
 
 namespace fs = std::filesystem;
@@ -24,15 +25,13 @@ struct response_file {
   std::string m_path;
   const file_loader m_loader;
 
-  response_file(std::string path_, const file_loader loader_)
-      : m_path(std::move(path_)), m_loader(loader_) {}
+  response_file(std::string path_, const file_loader loader_) : m_path(std::move(path_)), m_loader(loader_) {}
 
   explicit response_file(const response &other) = delete;
   response_file &operator=(const response_file &other) = delete;
   response_file &operator=(response_file &&other) = delete;
   ~response_file() = default;
-  response_file(response_file &&other) noexcept
-      : m_path(std::move(other.m_path)), m_loader(other.m_loader) {}
+  response_file(response_file &&other) noexcept : m_path(std::move(other.m_path)), m_loader(other.m_loader) {}
 };
 
 struct response::impl {
@@ -55,13 +54,14 @@ struct response::impl {
 
   impl(const status status_, response_file file_, const heads_t &headers_ = {}) {
     m_status = status_;
+    const std::string path_ref = file_.m_path;
     m_payload.emplace<response_file>(std::move(file_));
 
     for (const auto &[key, value] : headers_) {
       set_header(key, value);
     }
 
-    const auto file_ext = fs::path(file_.m_path).extension().string();
+    const auto file_ext = fs::path(path_ref).extension().string();
     try_set_header("Content-Type", content_type_from_ext(file_ext));
   }
 
@@ -86,8 +86,7 @@ struct response::impl {
   }
 
   std::optional<head_t *> find_header(const std::string &key) {
-    const auto it = std::ranges::find_if(
-        m_headers, [&](const auto &header) { return header.first == key; });
+    const auto it = std::ranges::find_if(m_headers, [&](const auto &header) { return header.first == key; });
     return it == m_headers.end() ? std::nullopt : std::optional{&*it};
   }
 };

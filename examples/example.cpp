@@ -30,12 +30,15 @@ int main(int argc, char *argv[]) {
   users_db.emplace_back("alicey@email.com", "alice123");
   users_db.emplace_back("milkey@test.com", "strongpass");
 
-  const fc::app app;
-  const fc::router router("/users");
+  fc::app app;
+  fc::router router("/users");
 
   // middlewares
   router.use(logger_middleware);
   router.use(auth_middleware);
+
+  app.set_views_dir("examples/views/");
+  app.set_assets_dir("examples/public/");
 
   router.post("", users_create);
   router.get("", users_find_many);
@@ -43,10 +46,7 @@ int main(int argc, char *argv[]) {
   router.delet("/{id}", users_delete);
 
   // render html file
-  app.get("/hello", [](fc::request &req) {
-    std::cout << "At hello/\n";
-    return fc::response::render("index.html");
-  });
+  app.get("/hello", [](fc::request &req) { return fc::response::render("index.html"); });
 
   app.use(router);
   return app.listen(":8000");
@@ -88,7 +88,8 @@ fc::response users_delete(fc::request &req) {
 
 fc::response logger_middleware(fc::request &req) {
   auto res = req.next();
-  std::cout << fc::method_to_string(req.get_method()) << " " << req.get_path() << " " << static_cast<int>(res.get_status()) << std::endl;
+  std::cout << fc::method_to_string(req.get_method()) << " " << req.get_path() << " "
+            << static_cast<int>(res.get_status()) << std::endl;
   return res;
 }
 

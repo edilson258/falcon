@@ -27,22 +27,22 @@ response request::next() {
   return next_handler(*this);
 }
 
-method request::get_method() {
-  return m_pimpl->m_method;
-}
+method request::get_method() { return m_pimpl->m_method; }
 
-std::string_view &request::get_path() {
-  return m_pimpl->m_path;
-}
+std::string_view &request::get_path() { return m_pimpl->m_path; }
 
 std::optional<std::string_view> request::get_param(const std::string &key) {
-  if (auto it = std::find_if(m_pimpl->m_params.begin(), m_pimpl->m_params.end(), [key](const std::pair<std::string_view, std::string_view> &p) { return p.first == key; }); it != m_pimpl->m_params.end())
+  auto it = std::find_if(m_pimpl->m_params.begin(), m_pimpl->m_params.end(),
+                         [key](const std::pair<std::string_view, std::string_view> &p) { return p.first == key; });
+  if (it != m_pimpl->m_params.end())
     return it->second;
   return std::nullopt;
 }
 
 std::optional<std::string_view> request::get_header(const std::string &key) {
-  if (auto it = std::find_if(m_pimpl->m_headers.begin(), m_pimpl->m_headers.end(), [key](const std::pair<std::string_view, std::string_view> &p) { return p.first == key; }); it != m_pimpl->m_headers.end())
+  auto it = std::find_if(m_pimpl->m_headers.begin(), m_pimpl->m_headers.end(),
+                         [key](const std::pair<std::string_view, std::string_view> &p) { return p.first == key; });
+  if (it != m_pimpl->m_headers.end())
     return it->second;
   return std::nullopt;
 }
@@ -59,9 +59,7 @@ std::optional<std::string_view> request::get_cookie(const std::string &name) {
   return m_pimpl->m_cookies->get(name);
 }
 
-nlohmann::json request::json() {
-  return nlohmann::json::parse(m_pimpl->m_raw_body);
-}
+nlohmann::json request::json() { return nlohmann::json::parse(m_pimpl->m_raw_body); }
 
 inline std::string_view trim(std::string_view str) {
   while (!str.empty() && std::isspace(static_cast<unsigned char>(str.front())))
@@ -81,15 +79,17 @@ void cookies::parse(std::string_view header) {
     else
       header = {};
     token = trim(token);
-    if (token.empty())
+    if (token.empty()) {
       continue;
+    }
     size_t eq_pos = token.find('=');
-    if (eq_pos == std::string_view::npos)
+    if (eq_pos == std::string_view::npos) {
       continue;
+    }
     std::string_view name = trim(token.substr(0, eq_pos));
     std::string_view value = trim(token.substr(eq_pos + 1));
     if (!name.empty() && !value.empty()) {
-      m_cookies.push_back({name, value});
+      m_cookies.emplace_back(name, value);
     }
   }
 }

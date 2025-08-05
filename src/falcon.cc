@@ -1,7 +1,6 @@
+#include <cstddef>
 #include <cstdio>
 #include <filesystem>
-#include <format>
-#include <iostream>
 #include <string>
 
 #include "const.h"
@@ -15,7 +14,6 @@
 #include "utils.h"
 
 #define FC_BACKLOG (128)
-#define MAX_REQ_LEN (1024 * 1024 * 5) // 5 MB
 
 namespace fs = std::filesystem;
 
@@ -122,15 +120,15 @@ void app::use(const router &router) const {
   }
 }
 
-void app::set_views_dir(const std::string &dir_path) const {
-  m_pimpl->m_views = dir_path;
-}
+void app::set_views_dir(const std::string &dir_path) const { m_pimpl->m_views = dir_path; }
 
 void app::set_assets_dir(const std::string &dir_path) const {
-  m_pimpl->m_assets = dir_path;
+  //
+  m_pimpl->m_assets = fs::absolute(dir_path);
 }
 
-void app::impl::add_route(const method method_, const std::string &path_, const path_handler &handler_, const std::vector<path_handler> &middlewares_) {
+void app::impl::add_route(const method method_, const std::string &path_, const path_handler &handler_,
+                          const std::vector<path_handler> &middlewares_) {
   std::string norm_path = path_;
   if (norm_path.empty() || path_.at(0) != '/') {
     norm_path.insert(0, "/");
@@ -224,9 +222,9 @@ void app::impl::match_request_to_handler(request req) const {
 }
 
 void app::impl::try_serve_static_file(request req) const {
-  const auto path = join_paths(m_assets, std::string(req.get_path()));
-  if (path.string().starts_with(m_assets.string())) {
-    response_file file{path, file_loader::External};
+  auto path = join_paths(m_assets, std::string(req.get_path())).string();
+  if (path.starts_with(m_assets.string())) {
+    response_file file{std::move(path), file_loader::External};
     auto res = response(new response::impl(status::OK, std::move(file)));
     send_response_file(std::move(req), std::move(res));
   } else {
@@ -235,28 +233,36 @@ void app::impl::try_serve_static_file(request req) const {
 }
 
 void app::impl::send_response_head(const request &req, const response &res) {
-  std::string headers_tmp;
+  size_t tmp_len = 0;
   for (const auto &[key, value] : res.m_pimpl->m_headers) {
-    headers_tmp.append(key);
-    headers_tmp.append(": ");
-    headers_tmp.append(value);
-    headers_tmp.append("\r\n");
+    tmp_len += key.length() + value.length();
+    tmp_len += 1 + 2; // +1 for the separator ':' and +2 for '\r\n'
   }
 
-  headers_tmp = std::format(
-      header_fmt,
-      static_cast<int>(res.m_pimpl->m_status),
-      status_to_string(res.m_pimpl->m_status),
-      headers_tmp);
+  const auto tmp_buf = new char[tmp_len + 1];
+  char *tmp_buf_ptr = tmp_buf;
+  size_t remaining = tmp_len + 1;
+  for (const auto &[key, value] : res.m_pimpl->m_headers) {
+    const int written = snprintf(tmp_buf_ptr, remaining, "%s:%s\r\n", key.c_str(), value.c_str());
+    // TODO: check for 'snprintf' error
+    tmp_buf_ptr += written;
+    remaining -= static_cast<size_t>(written);
+  }
 
-  const auto headers = new char[headers_tmp.length() + 1];
-  strncpy(headers, headers_tmp.c_str(), headers_tmp.length());
-  headers[headers_tmp.length()] = '\0';
+  const auto status = static_cast<int>(res.m_pimpl->m_status);
+  const auto status_str = status_to_string(res.m_pimpl->m_status);
+  const auto headers_len = snprintf(nullptr, 0, header_cfmt, status, status_str, tmp_buf);
+  const auto headers_buf = new char[static_cast<size_t>(headers_len + 1)];
+  snprintf(headers_buf, static_cast<size_t>(headers_len) + 1, header_cfmt, status, status_str, tmp_buf);
+  // TODO: check for 'snprintf' error
+  headers_buf[headers_len] = '\0';
 
   const auto write_req = new uv_write_t;
-  write_req->data = headers;
-  const uv_buf_t write_buf = uv_buf_init(headers, headers_tmp.length());
+  write_req->data = headers_buf;
+  const uv_buf_t write_buf = uv_buf_init(headers_buf, static_cast<unsigned int>(headers_len));
   uv_write(write_req, req.m_pimpl->m_remote, &write_buf, 1, on_write_buf);
+
+  delete[] tmp_buf;
 }
 
 void app::impl::send_response_body(request req_, response res_) {
@@ -266,7 +272,7 @@ void app::impl::send_response_body(request req_, response res_) {
   strncpy(body, text.c_str(), text.length());
   body[text.length()] = '\0';
 
-  const auto uv_buf = uv_buf_init(body, text.length());
+  const auto uv_buf = uv_buf_init(body, static_cast<unsigned int>(text.length()));
   const auto write_req = new uv_write_t;
   write_req->data = body;
   uv_write(write_req, req_.m_pimpl->m_remote, &uv_buf, 1, on_write_and_close);
@@ -353,11 +359,13 @@ void app::impl::on_read_file_chunk(uv_fs_t *read_req) {
   auto *ctx = static_cast<file_sender *>(read_req->data);
 
   if (read_req->result > 0) {
-    const size_t chunk_len = snprintf(nullptr, 0, "%x\r\n%s\r\n", static_cast<unsigned int>(read_req->result), ctx->m_chunk);
-    const auto chunk_buf = new char[chunk_len + 1];
-    snprintf(chunk_buf, chunk_len + 1, "%x\r\n%s\r\n", static_cast<unsigned int>(read_req->result), ctx->m_chunk);
+    const auto nread = static_cast<unsigned int>(read_req->result);
+    const auto chunk_len = snprintf(nullptr, 0, "%x\r\n%s\r\n", nread, ctx->m_chunk);
+    const auto chunk_buf = new char[static_cast<size_t>(chunk_len) + 1];
+    snprintf(chunk_buf, static_cast<size_t>(chunk_len) + 1, "%x\r\n%s\r\n", nread, ctx->m_chunk);
+    chunk_buf[chunk_len] = '\0';
 
-    const uv_buf_t write_buf = uv_buf_init(chunk_buf, chunk_len);
+    const uv_buf_t write_buf = uv_buf_init(chunk_buf, static_cast<unsigned int>(chunk_len));
     auto *write_req = new uv_write_t;
     write_req->data = chunk_buf;
     uv_write(write_req, ctx->m_remote, &write_buf, 1, on_write_buf);
@@ -400,8 +408,6 @@ void app::impl::on_write_and_close(uv_write_t *req, const int status) {
   uv_close(remote, on_close_conn);
 }
 
-void app::impl::on_close_conn(uv_handle_t *client) {
-  delete reinterpret_cast<uv_tcp_t *>(client);
-}
+void app::impl::on_close_conn(uv_handle_t *client) { delete reinterpret_cast<uv_tcp_t *>(client); }
 
 } // namespace fc

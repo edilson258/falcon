@@ -13,7 +13,8 @@ struct route {
   std::string m_path;
   path_handler m_handler;
 
-  route(const method method_, std::string path, path_handler handler) : m_method(method_), m_path(std::move(path)), m_handler(std::move(handler)) {};
+  route(const method method_, std::string path, path_handler handler)
+      : m_method(method_), m_path(std::move(path)), m_handler(std::move(handler)) {};
 };
 
 struct router::impl {
@@ -29,9 +30,8 @@ struct root_router {
 
   root_router() : m_tree(10) {}
 
-  void add(method, const std::string &, const path_handler &,
-           const std::vector<path_handler> &);
-  bool match(const request &) const;
+  void add(method, const std::string &, const path_handler &, const std::vector<path_handler> &);
+  [[nodiscard]] bool match(const request &) const;
 };
 
 } // namespace fc
